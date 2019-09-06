@@ -1,0 +1,15 @@
+*.jpg
+*.mat
+*.zip
+*.tgz
+*.npy
+*.obj
+*.exe
+*.pbd
+*.tlog
+.idea
+PRNetReproduce/face3ddir/examples/Data/*
+*.pyc
+*.gif
+*.png
+*.h5
