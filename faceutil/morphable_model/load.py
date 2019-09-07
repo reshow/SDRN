@@ -11,7 +11,7 @@ def load_BFM(model_path):
     Args:
         model_path: path to BFM model. 
     Returns:
-        model: (nver = 53215, ntri = 105840). nver: number of vertices. ntri: number of triangles.
+        modelback: (nver = 53215, ntri = 105840). nver: number of vertices. ntri: number of triangles.
             'shapeMU': [3*nver, 1]
             'shapePC': [3*nver, 199]
             'shapeEV': [199, 1]

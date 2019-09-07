@@ -13,3 +13,4 @@ PRNetReproduce/face3ddir/examples/Data/*
 *.gif
 *.png
 *.h5
+tmp

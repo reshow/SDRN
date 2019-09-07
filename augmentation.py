@@ -21,19 +21,25 @@ def randomColor(image):
     return out
 
 
+def getRotateMatrix(angle, image_shape):
+    [image_height, image_width, image_channel] = image_shape
+    t1 = np.array([[1, 0, -image_height / 2.], [0, 1, -image_width / 2.], [0, 0, 1]])
+    r1 = np.array([[math.cos(angle), math.sin(angle), 0], [math.sin(-angle), math.cos(angle), 0], [0, 0, 1]])
+    t2 = np.array([[1, 0, image_height / 2.], [0, 1, image_width / 2.], [0, 0, 1]])
+    rt_mat = t2.dot(r1).dot(t1)
+    t1 = np.array([[1, 0, -image_height / 2.], [0, 1, -image_width / 2.], [0, 0, 1]])
+    r1 = np.array([[math.cos(-angle), math.sin(-angle), 0], [math.sin(angle), math.cos(-angle), 0], [0, 0, 1]])
+    t2 = np.array([[1, 0, image_height / 2.], [0, 1, image_width / 2.], [0, 0, 1]])
+    rt_mat_inv = t2.dot(r1).dot(t1)
+    return rt_mat, rt_mat_inv
+
+
 def rotateData(x, y):
     angle = np.random.randint(-90, 90)
     angle = angle / 180. * np.pi
     [image_height, image_width, image_channel] = x.shape
     # move-rotate-move
-    t1 = np.array([[1, 0, -image_height / 2.], [0, 1, -image_width / 2.], [0, 0, 1]])
-    r1 = np.array([[math.cos(angle), math.sin(angle), 0], [math.sin(-angle), math.cos(angle), 0], [0, 0, 1]])
-    t2 = np.array([[1, 0, image_height / 2.], [0, 1, image_width / 2.], [0, 0, 1]])
-    rform = t2.dot(r1).dot(t1)
-    t1 = np.array([[1, 0, -image_height / 2.], [0, 1, -image_width / 2.], [0, 0, 1]])
-    r1 = np.array([[math.cos(-angle), math.sin(-angle), 0], [math.sin(angle), math.cos(-angle), 0], [0, 0, 1]])
-    t2 = np.array([[1, 0, image_height / 2.], [0, 1, image_width / 2.], [0, 0, 1]])
-    rform_inv = t2.dot(r1).dot(t1)
+    [rform, rform_inv] = getRotateMatrix(angle, x.shape)
 
     rotate_x = transform.warp(x, rform_inv,
                               output_shape=(image_height, image_width))
