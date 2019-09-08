@@ -17,7 +17,7 @@ from augmentation import getRotateMatrix, randomColor, gaussNoise
 
 class DataProcessor:
     def __init__(self,
-                 is_full_image=False, is_visualize=True, is_augment=False,
+                 is_full_image=False, is_visualize=True, is_augment=False, is_pt3d=False,
                  bbox_extend_rate=1.5, marg_rate=0.1):
 
         print('bfm model loaded')
@@ -41,6 +41,7 @@ class DataProcessor:
         self.bbox_extend_rate = bbox_extend_rate
         self.marg_rate = marg_rate
         self.is_augment = is_augment
+        self.is_pt3d = is_pt3d
 
     def initialize(self, image_path, output_dir='data/temp'):
         self.image_path = image_path
@@ -110,7 +111,10 @@ class DataProcessor:
         scale = trans_mat[0][0]
         if self.is_augment:
             # do rotation
-            angle = np.random.randint(-90, 90)
+            if np.random.rand() > 0.5:
+                angle = np.random.randint(-120, -15)
+            else:
+                angle = np.random.randint(15, 120)
             angle = angle / 180. * np.pi
             [rt_mat, rt_mat_inv] = getRotateMatrix(angle, [crop_h, crop_w, crop_c])
             trans_mat = rt_mat.dot(trans_mat)
@@ -133,13 +137,17 @@ class DataProcessor:
         [left, top, right, bottom] = self.getBbox(kpt)
         bbox = np.array([[left, top], [right, bottom]])
 
-        # get gt landmark68
-        init_kpt = self.bfm_info['pt3d_68'].T
-        init_kpt[:, 2] = init_kpt[:, 2] - np.min(image_vertices[:, 2])
-        new_kpt = copy.copy(init_kpt)
-        new_kpt[:, 2] = 1
-        new_kpt = np.dot(new_kpt, trans_mat.T)
-        new_kpt[:, 2] = init_kpt[:, 2] * scale
+        if self.is_pt3d:
+            # get gt landmark68
+            init_kpt = self.bfm_info['pt3d_68'].T
+            init_kpt[:, 2] = init_kpt[:, 2] - np.min(image_vertices[:, 2])
+            new_kpt = copy.copy(init_kpt)
+            new_kpt[:, 2] = 1
+            new_kpt = np.dot(new_kpt, trans_mat.T)
+            new_kpt[:, 2] = init_kpt[:, 2] * scale
+        else:
+            new_kpt = []
+            init_kpt = []
 
         if self.is_augment:
             cropped_image = randomColor(cropped_image)
@@ -192,7 +200,7 @@ class DataProcessor:
 
 def workerProcess(image_paths, output_dirs, id, conf):
     print('worker:', id, 'start. task number:', len(image_paths))
-    data_processor = DataProcessor(bbox_extend_rate=conf.bboxExtendRate, marg_rate=conf.margin,
+    data_processor = DataProcessor(bbox_extend_rate=conf.bboxExtendRate, marg_rate=conf.margin, is_pt3d=conf.isOldKpt,
                                    is_visualize=conf.isVisualize, is_full_image=conf.isFull, is_augment=conf.isAugment)
     for i in range(len(image_paths)):
         # print('\r worker ' + str(id) + ' task ' + str(i) + '/' + str(len(image_paths)) +''+  image_paths[i])
@@ -274,6 +282,8 @@ if __name__ == "__main__":
                         help='margin for the bbox')
     parser.add_argument('-a', '--isAugment', default=False, type=ast.literal_eval,
                         help='do augmentation or not')
+    parser.add_argument('--isOldKpt', default=False, type=ast.literal_eval,
+                        help='for 300W there is no pt68_3d')
     conf = parser.parse_args()
 
     if not conf.isSingle:
