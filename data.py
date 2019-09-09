@@ -17,6 +17,7 @@ import ast
 import copy
 from PIL import ImageEnhance, ImageOps, ImageFile, Image
 import augmentation
+import random
 
 #  global data
 bfm = MorphabelModel('data/Out/BFM.mat')
@@ -284,6 +285,9 @@ class FitGenerator:
                 batch_num = batch_size
                 indexs = np.random.randint(len(self.all_image_data), size=batch_size)
             elif gen_mode == 'order':
+                if self.next_index == 0:
+                    print('random shuffle')
+                    random.shuffle(self.all_image_data)
                 if batch_size > len(self.all_image_data):
                     batch_size = len(self.all_image_data)
                 batch_num = batch_size
@@ -294,7 +298,7 @@ class FitGenerator:
             else:
                 indexs = None
                 batch_num = 0
-                print('known generate mode')
+                print('unknown generate mode')
             for i in range(batch_num):
                 image_path = self.all_image_data[indexs[i]].cropped_image_path
                 image = io.imread(image_path) / 255.
