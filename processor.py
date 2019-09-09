@@ -151,7 +151,7 @@ class DataProcessor:
 
         if self.is_augment:
             cropped_image = randomColor(cropped_image)
-            cropped_image = gaussNoise(cropped_image)
+            # cropped_image = gaussNoise(cropped_image)
         # from datavisualize import showMesh, show
         # show([uv_position_map, None, cropped_image], False, 'uvmap')
         # 5. save files
