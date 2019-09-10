@@ -286,7 +286,7 @@ class FitGenerator:
                 indexs = np.random.randint(len(self.all_image_data), size=batch_size)
             elif gen_mode == 'order':
                 if self.next_index == 0:
-                    print('random shuffle')
+                    # print('random shuffle')
                     random.shuffle(self.all_image_data)
                 if batch_size > len(self.all_image_data):
                     batch_size = len(self.all_image_data)
@@ -294,6 +294,7 @@ class FitGenerator:
                 if self.next_index + batch_size >= len(self.all_image_data):
                     batch_num = len(self.all_image_data) - self.next_index
                 indexs = np.array(range(self.next_index, self.next_index + batch_num))
+                # print(self.next_index,self.next_index+batch_num)
                 self.next_index = (self.next_index + batch_num) % len(self.all_image_data)
             else:
                 indexs = None

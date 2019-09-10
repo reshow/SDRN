@@ -232,7 +232,8 @@ if __name__ == '__main__':
 
     if run_args.isTrain:
         net_manager = NetworkManager(run_args)
-        net_manager.net.buildPRNet()
+        # net_manager.net.buildPRNet3()
+        net_manager.net.buildAttentionPRNet3()
         if run_args.valDataDir is not None:
             for dir in run_args.trainDataDir:
                 net_manager.addImageData(dir, 'train')
