@@ -8,3 +8,9 @@ APRN:
         Epoch30:    loss: 0.3177 - templateLoss: 0.0444 - mean_absolute_error: 0.0569 - val_loss: 0.1090 - val_templateLoss: 0.0781 - val_mean_absolute_error: 0.0720
         Epoch5:     loss: 1.1835 - templateLoss: 0.1690 - mean_absolute_error: 0.1151 - val_loss: 0.9979 - val_templateLoss: 0.1608 - val_mean_absolute_error: 0.1098
 
+
+
+parameter:
+  init:13353618
+  initmy:13352633
+  prnmy:32127209

@@ -4,8 +4,8 @@ import numpy as np
 from keras.models import Model
 from keras.layers import Input, Dense, Dropout, BatchNormalization, Conv2D, MaxPooling2D, AveragePooling2D, concatenate, \
     Activation, ZeroPadding2D, Conv2DTranspose, regularizers
-from keras.layers import Add, GlobalMaxPooling2D
-from keras.layers import add, Flatten, Multiply
+from keras.layers import Add, GlobalMaxPooling2D, GlobalAveragePooling2D, Reshape, Permute, multiply
+from keras.layers import add, Flatten, Multiply, Lambda, Concatenate
 from keras.initializers import glorot_uniform
 from keras.callbacks import ModelCheckpoint, Callback, History
 from keras.utils import multi_gpu_model
@@ -65,3 +65,135 @@ def DistillationModule(inpt, nb_filter):
     otp = Multiply()([x1, x2])
 
     return otp
+
+
+def channel_attention(x, ratio):
+    channel_axis = 1 if K.image_data_format() == "channels_first" else -1
+    channel = x._keras_shape[channel_axis]
+
+    shared_layer_one = Dense(channel // ratio,
+                             activation='relu',
+                             kernel_initializer='he_normal',
+                             use_bias=True,
+                             bias_initializer='zeros')
+    shared_layer_two = Dense(channel,
+                             kernel_initializer='he_normal',
+                             use_bias=True,
+                             bias_initializer='zeros')
+
+    avg_pool = GlobalAveragePooling2D()(x)
+    avg_pool = Reshape((1, 1, channel))(avg_pool)
+    assert avg_pool._keras_shape[1:] == (1, 1, channel)
+    avg_pool = shared_layer_one(avg_pool)
+    assert avg_pool._keras_shape[1:] == (1, 1, channel // ratio)
+    avg_pool = shared_layer_two(avg_pool)
+    assert avg_pool._keras_shape[1:] == (1, 1, channel)
+
+    max_pool = GlobalMaxPooling2D()(x)
+    max_pool = Reshape((1, 1, channel))(max_pool)
+    assert max_pool._keras_shape[1:] == (1, 1, channel)
+    max_pool = shared_layer_one(max_pool)
+    assert max_pool._keras_shape[1:] == (1, 1, channel // ratio)
+    max_pool = shared_layer_two(max_pool)
+    assert max_pool._keras_shape[1:] == (1, 1, channel)
+
+    cbam_feature = Add()([avg_pool, max_pool])
+    cbam_feature = Activation('sigmoid')(cbam_feature)
+
+    if K.image_data_format() == "channels_first":
+        cbam_feature = Permute((3, 1, 2))(cbam_feature)
+
+    return multiply([x, cbam_feature])
+
+
+def spatial_attention(x):
+    kernel_size = 7
+
+    if K.image_data_format() == "channels_first":
+        channel = x._keras_shape[1]
+        cbam_feature = Permute((2, 3, 1))(x)
+    else:
+        channel = x._keras_shape[-1]
+        cbam_feature = x
+
+    avg_pool = Lambda(lambda x: K.mean(x, axis=3, keepdims=True))(cbam_feature)
+    assert avg_pool._keras_shape[-1] == 1
+    max_pool = Lambda(lambda x: K.max(x, axis=3, keepdims=True))(cbam_feature)
+    assert max_pool._keras_shape[-1] == 1
+    concat = Concatenate(axis=3)([avg_pool, max_pool])
+    assert concat._keras_shape[-1] == 2
+    cbam_feature = Conv2D(filters=1,
+                          kernel_size=kernel_size,
+                          strides=1,
+                          padding='same',
+                          activation='sigmoid',
+                          kernel_initializer='he_normal',
+                          use_bias=False)(concat)
+    assert cbam_feature._keras_shape[-1] == 1
+
+    if K.image_data_format() == "channels_first":
+        cbam_feature = Permute((3, 1, 2))(cbam_feature)
+
+    return multiply([x, cbam_feature])
+
+
+def CbamModule(x, ratio=4):
+    x = channel_attention(x, ratio)
+    x = spatial_attention(x)
+    return x
+
+
+def Conv2d_BN_AC(x, nb_filter, kernel_size, strides=(1, 1), padding='same'):
+    x = Conv2D(nb_filter, kernel_size, padding=padding, strides=strides)(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    return x
+
+
+def CbamResBlock(inpt, nb_filter, kernel_size, strides=(1, 1), with_conv_shortcut=False):
+    x = Conv2d_BN_AC(inpt, nb_filter=int(nb_filter / 2), kernel_size=1, strides=strides, padding='same')
+    x = Conv2d_BN_AC(x, nb_filter=int(nb_filter / 2), kernel_size=kernel_size, padding='same')
+    x = Conv2d_BN_AC(x, nb_filter=nb_filter, kernel_size=1, padding='same')
+    # x = CbamModule(x)
+    # if with_conv_shortcut:
+    #     shortcut = Conv2d_BN_AC(inpt, nb_filter=nb_filter, strides=strides, kernel_size=kernel_size)
+    #     x = add([x, shortcut])
+    #     x = Activation('relu')(x)
+    #     return x
+    # else:
+    #     x = add([x, inpt])
+    #     x = Activation('relu')(x)
+    #     return x
+
+    # x = Conv2D(int(nb_filter / 2), kernel_size=1, strides=(1, 1), padding='same')(inpt)
+    # x = Conv2D(int(nb_filter / 2), kernel_size=kernel_size, strides=strides, padding='same')(x)
+    # x = Conv2D(nb_filter, kernel_size=1, strides=(1, 1), padding='same')(x)
+    x = CbamModule(x)
+    if with_conv_shortcut:
+        shortcut = Conv2D(nb_filter, strides=strides, kernel_size=1)(inpt)
+        x = add([x, shortcut])
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        return x
+    else:
+        x = add([x, inpt])
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        return x
+
+
+def PRNResBlock(inpt, nb_filter, kernel_size=4, strides=(1, 1), with_conv_shortcut=False):
+    x = Conv2D(int(nb_filter / 2), kernel_size=1, strides=(1, 1), padding='same')(inpt)
+    x = Conv2D(int(nb_filter / 2), kernel_size=kernel_size, strides=strides, padding='same')(x)
+    x = Conv2D(nb_filter, kernel_size=1, strides=(1, 1), padding='same')(x)
+    if with_conv_shortcut:
+        shortcut = Conv2D(nb_filter, strides=strides, kernel_size=1)(inpt)
+        x = add([x, shortcut])
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        return x
+    else:
+        x = add([x, inpt])
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        return x

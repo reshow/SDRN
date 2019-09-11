@@ -81,7 +81,9 @@ class NetworkManager:
                                                save_best_only=True, save_weights_only=True)
         train_gen = FitGenerator(self.train_data)
         val_gen = FitGenerator(self.val_data)
-        tensorboard_dir = 'tmp' + '/' + str(int(time.time()))
+        now_time = time.localtime()
+        tensorboard_dir = 'tmp' + '/' + str(now_time.tm_year) + '-' + str(now_time.tm_mon) + '-' + str(now_time.tm_mday) + '-' \
+                          + str(now_time.tm_hour) + '-' + str(now_time.tm_min) + '-' + str(now_time.tm_sec)
         print('number of data images:', len(self.train_data), len(self.val_data))
         tensorboard_callback = keras.callbacks.TensorBoard(log_dir=tensorboard_dir, write_images=1, histogram_freq=0)
         if self.gpu_num > 1:
@@ -232,8 +234,10 @@ if __name__ == '__main__':
 
     if run_args.isTrain:
         net_manager = NetworkManager(run_args)
-        # net_manager.net.buildPRNet3()
-        net_manager.net.buildAttentionPRNet()
+        # net_manager.net.buildPRNet()
+        # net_manager.net.buildAttentionPRNet()
+        net_manager.net.buildCbamPRNet()
+        # net_manager.net.buildInitPRNet()
         if run_args.valDataDir is not None:
             for dir in run_args.trainDataDir:
                 net_manager.addImageData(dir, 'train')
