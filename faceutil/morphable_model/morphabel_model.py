@@ -146,3 +146,20 @@ class MorphabelModel(object):
                                                            n_ep=self.n_exp_para, max_iter=max_iter)
             angles = mesh.transform.matrix2angle(R)
         return fitted_sp, fitted_ep, s, angles, t
+
+    def generate_offset(self, shape_para, exp_para):
+        """
+        Args:
+            shape_para: (n_shape_para, 1)
+            exp_para: (n_exp_para, 1)
+        Returns:
+            vertices: (nver, 3)
+        """
+        vertices = self.model['shapePC'].dot(shape_para) + self.model['expPC'].dot(exp_para)
+        vertices = np.reshape(vertices, [int(3), int(len(vertices) / 3)], 'F').T
+        return vertices
+
+    def get_mean_shape(self):
+        vertices = self.model['shapeMU'] + self.model['expMU']
+        vertices = np.reshape(vertices, [int(3), int(len(vertices) / 3)], 'F').T
+        return vertices

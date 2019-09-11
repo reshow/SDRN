@@ -167,7 +167,7 @@ class NetworkManager:
 
         se_idx = np.argsort(np.sum(total_error_list, axis=-1))
         se_data_list = np.array(self.test_data)[se_idx]
-        se_path_list = [a.init_x_path for a in se_data_list]
+        se_path_list = [a.cropped_image_path for a in se_data_list]
         sep = '\n'
         fout = open('errororder.txt', 'w', encoding='utf-8')
         fout.write(sep.join(se_path_list))
@@ -233,7 +233,7 @@ if __name__ == '__main__':
     if run_args.isTrain:
         net_manager = NetworkManager(run_args)
         # net_manager.net.buildPRNet3()
-        net_manager.net.buildAttentionPRNet3()
+        net_manager.net.buildAttentionPRNet()
         if run_args.valDataDir is not None:
             for dir in run_args.trainDataDir:
                 net_manager.addImageData(dir, 'train')

@@ -163,6 +163,110 @@ class DataProcessor:
         io.imsave(self.write_dir + '/' + self.image_name + '_cropped.jpg',
                   (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
 
+    def runOffsetPosmap(self):
+        # 1. load image and fitted parameters
+        [height, width, channel] = self.image_shape
+        pose_para = self.bfm_info['Pose_Para'].T.astype(np.float32)
+        shape_para = self.bfm_info['Shape_Para'].astype(np.float32)
+        exp_para = self.bfm_info['Exp_Para'].astype(np.float32)
+        vertices = bfm.generate_vertices(shape_para, exp_para)
+        # offset position
+        offset_vertices = bfm.generate_offset(shape_para, exp_para)
+
+        # transform mesh
+
+        s = pose_para[-1, 0]
+        angles = pose_para[:3, 0]
+        t = pose_para[3:6, 0]
+        image_vertices = bfm.transform_3ddfa(vertices, s, angles, t)
+        image_vertices[:, 1] = height - image_vertices[:, 1]
+
+        # 3. crop image with key points
+        # 3.1 get old bbox
+        kpt = image_vertices[bfm.kpt_ind, :].astype(np.int32)
+        [left, top, right, bottom] = self.getBbox(kpt)
+        old_bbox = np.array([[left, top], [right, bottom]])
+
+        # 3.2 add margin to bbox
+        center = np.array([right - (right - left) / 2.0, bottom - (bottom - top) / 2.0])
+        old_size = (right - left + bottom - top) / 2
+        size = int(old_size * self.bbox_extend_rate)  # 1.5
+        marg = old_size * self.marg_rate  # 0.1
+        t_x = np.random.rand() * marg * 2 - marg
+        t_y = np.random.rand() * marg * 2 - marg
+        center[0] = center[0] + t_x
+        center[1] = center[1] + t_y
+        size = size * (np.random.rand() * 2 * self.marg_rate - self.marg_rate + 1)
+
+        # 3.3 crop and record the transform parameters
+        [crop_h, crop_w, crop_c] = default_cropped_image_shape
+        src_pts = np.array([[center[0] - size / 2, center[1] - size / 2], [center[0] - size / 2, center[1] + size / 2],
+                            [center[0] + size / 2, center[1] - size / 2]])
+        dst_pts = np.array([[0, 0], [0, crop_h - 1], [crop_w - 1, 0]])
+        tform = skimage.transform.estimate_transform('similarity', src_pts, dst_pts)
+        trans_mat = tform.params
+        trans_mat_inv = tform._inv_matrix
+        scale = trans_mat[0][0]
+        if self.is_augment:
+            # do rotation
+            if np.random.rand() > 0.5:
+                angle = np.random.randint(-120, -15)
+            else:
+                angle = np.random.randint(15, 120)
+            angle = angle / 180. * np.pi
+            [rt_mat, rt_mat_inv] = getRotateMatrix(angle, [crop_h, crop_w, crop_c])
+            trans_mat = rt_mat.dot(trans_mat)
+            trans_mat_inv = trans_mat_inv.dot(rt_mat_inv)
+        cropped_image = skimage.transform.warp(self.init_image, trans_mat_inv, output_shape=(crop_h, crop_w))
+        # 3.4 transform face position(image vertices)
+        position = image_vertices.copy()
+        position[:, 2] = 1
+        position = np.dot(position, trans_mat.T)
+        position[:, 2] = image_vertices[:, 2] * scale  # scale z
+        position[:, 2] = position[:, 2] - np.min(position[:, 2])  # translate z
+
+        offset_position = offset_vertices.copy()
+        offset_position[:, 2] = offset_position[:, 2] - np.min(offset_position[:, 2])
+
+        # 4. uv position map: render position in uv space
+        [uv_h, uv_w, uv_c] = default_uvmap_shape
+        uv_position_map = mesh.render.render_colors(uv_coords, bfm.full_triangles, position, uv_h,
+                                                    uv_w, uv_c)
+
+        uv_offset_map = mesh.render.render_colors(uv_coords, bfm.full_triangles, offset_position, uv_h,
+                                                  uv_w, uv_c)
+
+        # get new bbox
+        kpt = position[bfm.kpt_ind, :].astype(np.int32)
+        [left, top, right, bottom] = self.getBbox(kpt)
+        bbox = np.array([[left, top], [right, bottom]])
+
+        if self.is_pt3d:
+            # get gt landmark68
+            init_kpt = self.bfm_info['pt3d_68'].T
+            init_kpt[:, 2] = init_kpt[:, 2] - np.min(image_vertices[:, 2])
+            new_kpt = copy.copy(init_kpt)
+            new_kpt[:, 2] = 1
+            new_kpt = np.dot(new_kpt, trans_mat.T)
+            new_kpt[:, 2] = init_kpt[:, 2] * scale
+        else:
+            new_kpt = []
+            init_kpt = []
+
+        if self.is_augment:
+            cropped_image = randomColor(cropped_image)
+            # cropped_image = gaussNoise(cropped_image)
+        # from datavisualize import showMesh, show
+        # show([uv_position_map, None, cropped_image], False, 'uvmap')
+        # 5. save files
+        sio.savemat(self.write_dir + '/' + self.image_name + '_bbox_info.mat',
+                    {'OldBbox': old_bbox, 'Bbox': bbox, 'Tform': trans_mat, 'TformInv': trans_mat_inv,
+                     'Kpt': new_kpt,
+                     'OldKpt': init_kpt})
+        np.save(self.write_dir + '/' + self.image_name + '_cropped_uv_posmap.npy', uv_position_map)
+        io.imsave(self.write_dir + '/' + self.image_name + '_cropped.jpg',
+                  (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
+
     def processImage(self, image_path, output_dir):
         self.initialize(image_path, output_dir)
         self.bfm_info = sio.loadmat(self.image_path.replace('.jpg', '.mat'))
