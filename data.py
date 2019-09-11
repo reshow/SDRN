@@ -283,7 +283,7 @@ class FitGenerator:
             y = []
             if gen_mode == 'random':
                 batch_num = batch_size
-                indexs = np.random.randint(len(self.all_image_data), size=batch_size)
+                indexes = np.random.randint(len(self.all_image_data), size=batch_size)
             elif gen_mode == 'order':
                 if self.next_index == 0:
                     # print('random shuffle')
@@ -293,18 +293,18 @@ class FitGenerator:
                 batch_num = batch_size
                 if self.next_index + batch_size >= len(self.all_image_data):
                     batch_num = len(self.all_image_data) - self.next_index
-                indexs = np.array(range(self.next_index, self.next_index + batch_num))
+                indexes = np.array(range(self.next_index, self.next_index + batch_num))
                 # print(self.next_index,self.next_index+batch_num)
                 self.next_index = (self.next_index + batch_num) % len(self.all_image_data)
             else:
-                indexs = None
+                indexes = None
                 batch_num = 0
                 print('unknown generate mode')
             for i in range(batch_num):
-                image_path = self.all_image_data[indexs[i]].cropped_image_path
+                image_path = self.all_image_data[indexes[i]].cropped_image_path
                 image = io.imread(image_path) / 255.
-                image = transform.resize(image, (self.image_height, self.image_width, self.image_channel))
-                pos_path = self.all_image_data[indexs[i]].cropped_posmap_path
+                # image = transform.resize(image, (self.image_height, self.image_width, self.image_channel))
+                pos_path = self.all_image_data[indexes[i]].cropped_posmap_path
                 pos = np.load(pos_path)
                 pos = pos / 256.
                 x.append(image)
