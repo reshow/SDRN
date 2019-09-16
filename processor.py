@@ -12,7 +12,7 @@ import math
 from data import default_init_image_shape, default_cropped_image_shape, default_uvmap_shape, uv_coords, bfm
 from data import face_mask_np, face_mask_mean_fix_rate
 from data import bfm2Mesh, mesh2UVmap, UVmap2Mesh, renderMesh
-from augmentation import getRotateMatrix, randomColor, gaussNoise
+from augmentation import getRotateMatrix, unchangeAugment
 
 
 class DataProcessor:
@@ -111,7 +111,10 @@ class DataProcessor:
         scale = trans_mat[0][0]
         if self.is_augment:
             # do rotation
-            angle = np.random.randint(-90, 90)
+            if np.random.rand() > 0.5:
+                angle = np.random.randint(-90, 90)
+            else:
+                angle = 0
             angle = angle / 180. * np.pi
             [rt_mat, rt_mat_inv] = getRotateMatrix(angle, [crop_h, crop_w, crop_c])
             trans_mat = rt_mat.dot(trans_mat)
@@ -147,8 +150,7 @@ class DataProcessor:
             init_kpt = []
 
         if self.is_augment:
-            cropped_image = randomColor(cropped_image)
-            cropped_image = gaussNoise(cropped_image)
+            cropped_image = unchangeAugment(cropped_image)
         # from datavisualize import showMesh, show
         # show([uv_position_map, None, cropped_image], False, 'uvmap')
         # 5. save files
@@ -251,7 +253,7 @@ class DataProcessor:
             init_kpt = []
 
         if self.is_augment:
-            cropped_image = randomColor(cropped_image)
+            cropped_image = unchangeAugment(cropped_image)
             # cropped_image = gaussNoise(cropped_image)
         # from datavisualize import showMesh, show
         # show([uv_position_map, None, cropped_image], False, 'uvmap')
