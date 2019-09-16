@@ -5,6 +5,7 @@ import copy
 from PIL import ImageEnhance, ImageOps, ImageFile, Image
 from imgaug import augmenters as iaa
 
+
 # sometimes = lambda aug: iaa.Sometimes(0.5, aug)
 
 
@@ -114,7 +115,7 @@ aug_seq = iaa.Sequential([
                    iaa.Invert(0.05, per_channel=True),
 
                    # 每个像素随机加减-10到10之间的数
-                   iaa.Add((-10, 10), per_channel=0.5),
+                   iaa.Add((-10 / 255., 10 / 255.), per_channel=0.5),
 
                    # 像素乘上0.5或者1.5之间的数字.
                    iaa.Multiply((0.5, 1.5), per_channel=0.5),

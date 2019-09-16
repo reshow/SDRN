@@ -17,6 +17,7 @@ import ast
 import copy
 from PIL import ImageEnhance, ImageOps, ImageFile, Image
 import augmentation
+from math import cos, sin
 import random
 
 #  global data
@@ -237,6 +238,43 @@ def renderMesh(mesh_info, image_shape=None):
                                            mesh_info['colors'], image_height, image_width)
     mesh_image = np.clip(mesh_image, 0., 1.)
     return mesh_image
+
+
+def getTransformMatrix(s, angles, t):
+    """
+
+    :param s: scale
+    :param angles: [3] rad
+    :param t: [3]
+    :return: 4x4 transmatrix
+    """
+    x, y, z = angles[0], angles[1], angles[2]
+
+    # x
+    Rx = np.array([[1, 0, 0],
+                   [0, cos(x), sin(x)],
+                   [0, -sin(x), cos(x)]])
+    # y
+    Ry = np.array([[cos(y), 0, -sin(y)],
+                   [0, 1, 0],
+                   [sin(y), 0, cos(y)]])
+    # z
+    Rz = np.array([[cos(z), sin(z), 0],
+                   [-sin(z), cos(z), 0],
+                   [0, 0, 1]])
+    R = Rx.dot(Ry).dot(Rz)
+    R = R.astype(np.float32)
+    T = np.zeros((4, 4))
+    T[0:3, 0:3] = R
+    T[3, 3] = 1.
+
+    S = np.diagflat([s, s, s, 1.])
+    T = S.dot(T)
+
+    M = np.diagflat([1., 1., 1., 1.])
+    M[0:3, 3] = t.astype(np.float32)
+    T = M.dot(T)
+    return T.astype(np.float32)
 
 
 class ImageData:

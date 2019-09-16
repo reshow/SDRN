@@ -11,13 +11,13 @@ import multiprocessing
 import math
 from data import default_init_image_shape, default_cropped_image_shape, default_uvmap_shape, uv_coords, bfm
 from data import face_mask_np, face_mask_mean_fix_rate
-from data import bfm2Mesh, mesh2UVmap, UVmap2Mesh, renderMesh
+from data import bfm2Mesh, mesh2UVmap, UVmap2Mesh, renderMesh, getTransformMatrix
 from augmentation import getRotateMatrix, unchangeAugment
 
 
 class DataProcessor:
     def __init__(self,
-                 is_full_image=False, is_visualize=True, is_augment=False, is_pt3d=False,
+                 is_full_image=False, is_visualize=True, is_augment=False, is_pt3d=False,is_offset=False,
                  bbox_extend_rate=1.5, marg_rate=0.1):
 
         print('bfm model loaded')
@@ -42,6 +42,7 @@ class DataProcessor:
         self.marg_rate = marg_rate
         self.is_augment = is_augment
         self.is_pt3d = is_pt3d
+        self.is_offset=is_offset
 
     def initialize(self, image_path, output_dir='data/temp'):
         self.image_path = image_path
@@ -171,13 +172,18 @@ class DataProcessor:
         vertices = bfm.generate_vertices(shape_para, exp_para)
         # offset position
         offset_vertices = bfm.generate_offset(shape_para, exp_para)
-
         # transform mesh
 
         s = pose_para[-1, 0]
         angles = pose_para[:3, 0]
         t = pose_para[3:6, 0]
-        image_vertices = bfm.transform_3ddfa(vertices, s, angles, t)
+
+        T = getTransformMatrix(s, angles, t)
+        temp_ones_vec = np.ones((len(vertices), 1))
+        vertices_4dim = np.concatenate((vertices, temp_ones_vec), axis=-1)
+        trans_vec = vertices_4dim.dot(T.T)
+        image_vertices = trans_vec[:, 0:3]
+
         image_vertices[:, 1] = height - image_vertices[:, 1]
 
         # 3. crop image with key points
@@ -188,7 +194,7 @@ class DataProcessor:
 
         # 3.2 add margin to bbox
         center = np.array([right - (right - left) / 2.0, bottom - (bottom - top) / 2.0])
-        old_size = (right - left + bottom - top) / 2
+        old_size = (right - left + bottom - top) / 2.0
         size = int(old_size * self.bbox_extend_rate)  # 1.5
         marg = old_size * self.marg_rate  # 0.1
         t_x = np.random.rand() * marg * 2 - marg
@@ -209,9 +215,9 @@ class DataProcessor:
         if self.is_augment:
             # do rotation
             if np.random.rand() > 0.5:
-                angle = np.random.randint(-120, -15)
+                angle = np.random.randint(-90, 90)
             else:
-                angle = np.random.randint(15, 120)
+                angle = 0
             angle = angle / 180. * np.pi
             [rt_mat, rt_mat_inv] = getRotateMatrix(angle, [crop_h, crop_w, crop_c])
             trans_mat = rt_mat.dot(trans_mat)
@@ -282,7 +288,10 @@ class DataProcessor:
                 uv_texture_map = np.clip(self.uv_texture_map, 0., 1.)
                 io.imsave(self.write_dir + '/' + self.image_name + '_uv_texture_map.jpg', uv_texture_map)
 
-        self.runPosmap()
+        if self.is_offset:
+            self.runOffsetPosmap()
+        else:
+            self.runPosmap()
         self.clear()
 
     def clear(self):
@@ -304,7 +313,7 @@ class DataProcessor:
 def workerProcess(image_paths, output_dirs, id, conf):
     print('worker:', id, 'start. task number:', len(image_paths))
     data_processor = DataProcessor(bbox_extend_rate=conf.bboxExtendRate, marg_rate=conf.margin, is_pt3d=conf.isOldKpt,
-                                   is_visualize=conf.isVisualize, is_full_image=conf.isFull, is_augment=conf.isAugment)
+                                   is_visualize=conf.isVisualize, is_full_image=conf.isFull, is_augment=conf.isAugment,is_offset=conf.isOffset)
     for i in range(len(image_paths)):
         # print('\r worker ' + str(id) + ' task ' + str(i) + '/' + str(len(image_paths)) +''+  image_paths[i])
         print("worker {} task {}/{}  {}\r".format(str(id), str(i), str(len(image_paths)), image_paths[i]), end='')
@@ -387,6 +396,7 @@ if __name__ == "__main__":
                         help='do augmentation or not')
     parser.add_argument('--isOldKpt', default=False, type=ast.literal_eval,
                         help='for 300W there is no pt68_3d')
+    parser.add_argument('--isOffset', default=False, type=ast.literal_eval)
     conf = parser.parse_args()
 
     if not conf.isSingle:
