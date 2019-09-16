@@ -111,10 +111,7 @@ class DataProcessor:
         scale = trans_mat[0][0]
         if self.is_augment:
             # do rotation
-            if np.random.rand() > 0.5:
-                angle = np.random.randint(-120, -15)
-            else:
-                angle = np.random.randint(15, 120)
+            angle = np.random.randint(-90, 90)
             angle = angle / 180. * np.pi
             [rt_mat, rt_mat_inv] = getRotateMatrix(angle, [crop_h, crop_w, crop_c])
             trans_mat = rt_mat.dot(trans_mat)
@@ -151,7 +148,7 @@ class DataProcessor:
 
         if self.is_augment:
             cropped_image = randomColor(cropped_image)
-            # cropped_image = gaussNoise(cropped_image)
+            cropped_image = gaussNoise(cropped_image)
         # from datavisualize import showMesh, show
         # show([uv_position_map, None, cropped_image], False, 'uvmap')
         # 5. save files

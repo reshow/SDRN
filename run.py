@@ -232,12 +232,13 @@ if __name__ == '__main__':
 
     os.environ["CUDA_VISIBLE_DEVICES"] = run_args.visibleDevice
 
+    net_manager = NetworkManager(run_args)
+    # net_manager.net.buildPRNet()
+    # net_manager.net.buildAttentionPRNet()
+    net_manager.net.buildCbamPRNet()
+    # net_manager.net.buildInitPRNet()
     if run_args.isTrain:
-        net_manager = NetworkManager(run_args)
-        # net_manager.net.buildPRNet()
-        # net_manager.net.buildAttentionPRNet()
-        net_manager.net.buildCbamPRNet()
-        # net_manager.net.buildInitPRNet()
+
         if run_args.valDataDir is not None:
             for dir in run_args.trainDataDir:
                 net_manager.addImageData(dir, 'train')
@@ -250,8 +251,6 @@ if __name__ == '__main__':
             net_manager.net.loadWeights(run_args.loadModelPath)
         net_manager.train()
     if run_args.isTest:
-        net_manager = NetworkManager(run_args)
-        net_manager.net.buildPRNet()
         for dir in run_args.testDataDir:
             net_manager.addImageData(dir, 'test')
         if run_args.loadModelPath is not None:
