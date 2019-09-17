@@ -19,7 +19,7 @@ class RZYNet:
     def __init__(self,
                  gpu_num=1,
                  loss_function='frse',
-                 optimizer=Adam(lr=1e-3),
+                 optimizer=Adam(lr=1e-4),
                  ):
         self.gpu_num = gpu_num
         self.loss_function = loss_function

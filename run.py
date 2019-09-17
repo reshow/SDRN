@@ -86,16 +86,16 @@ class NetworkManager:
         print('number of data images:', len(self.train_data), len(self.val_data))
         tensorboard_callback = keras.callbacks.TensorBoard(log_dir=tensorboard_dir, write_images=1, histogram_freq=0)
 
-        def scheduler(epoch):
-            # lr decays half every 5 epoch
-            if epoch % 5 == 0 and epoch != 0:
-                lr = K.get_value(self.net.model.optimizer.lr)
-                K.set_value(self.net.model.optimizer.lr, lr * 0.5)
-                print("lr changed to {}".format(lr * 0.5))
-            return K.get_value(self.net.model.optimizer.lr)
-        reduce_lr = LearningRateScheduler(scheduler)
-
         if self.gpu_num > 1:
+            def scheduler(epoch):
+                # lr decays half every 5 epoch
+                if epoch % 5 == 0 and epoch != 0:
+                    lr = K.get_value(self.net.paral_model.optimizer.lr)
+                    K.set_value(self.net.paral_model.optimizer.lr, lr * 0.5)
+                    print("lr changed to {}".format(lr * 0.5))
+                return K.get_value(self.net.paral_model.optimizer.lr)
+
+            reduce_lr = LearningRateScheduler(scheduler)
             self.net.paral_model.fit_generator(train_gen.genPRN(batch_size=self.batch_size, gen_mode='random'),
                                                steps_per_epoch=math.ceil(
                                                    len(self.train_data) / float(self.batch_size)),
@@ -105,6 +105,15 @@ class NetworkManager:
                                                                            gen_mode='order'),
                                                validation_steps=math.ceil(len(self.val_data) / float(self.batch_size)))
         else:
+            def scheduler(epoch):
+                # lr decays half every 5 epoch
+                if epoch % 5 == 0 and epoch != 0:
+                    lr = K.get_value(self.net.model.optimizer.lr)
+                    K.set_value(self.net.model.optimizer.lr, lr * 0.5)
+                    print("lr changed to {}".format(lr * 0.5))
+                return K.get_value(self.net.model.optimizer.lr)
+
+            reduce_lr = LearningRateScheduler(scheduler)
             self.net.model.fit_generator(train_gen.genPRN(batch_size=self.batch_size, gen_mode='random'),
                                          steps_per_epoch=math.ceil(
                                              len(self.train_data) / float(self.batch_size)),
