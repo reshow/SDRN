@@ -35,7 +35,20 @@ def getRotateMatrix(angle, image_shape):
     r1 = np.array([[math.cos(-angle), math.sin(-angle), 0], [math.sin(angle), math.cos(-angle), 0], [0, 0, 1]])
     t2 = np.array([[1, 0, image_height / 2.], [0, 1, image_width / 2.], [0, 0, 1]])
     rt_mat_inv = t2.dot(r1).dot(t1)
-    return rt_mat, rt_mat_inv
+    return rt_mat.astype(np.float32), rt_mat_inv.astype(np.float32)
+
+
+def getRotateMatrix3D(angle, image_shape):
+    [image_height, image_width, image_channel] = image_shape
+    t1 = np.array([[1, 0, 0, -image_height / 2.], [0, 1, 0, -image_width / 2.], [0, 0, 1, 0], [0, 0, 0, 1]])
+    r1 = np.array([[math.cos(angle), math.sin(angle), 0, 0], [math.sin(-angle), math.cos(angle), 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+    t2 = np.array([[1, 0, 0, image_height / 2.], [0, 1, 0, image_width / 2.], [0, 0, 1, 0], [0, 0, 0, 1]])
+    rt_mat = t2.dot(r1).dot(t1)
+    t1 = np.array([[1, 0, 0, -image_height / 2.], [0, 1, 0, -image_width / 2.], [0, 0, 1, 0], [0, 0, 0, 1]])
+    r1 = np.array([[math.cos(-angle), math.sin(-angle), 0, 0], [math.sin(angle), math.cos(-angle), 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+    t2 = np.array([[1, 0, 0, image_height / 2.], [0, 1, 0, image_width / 2.], [0, 0, 1, 0], [0, 0, 0, 1]])
+    rt_mat_inv = t2.dot(r1).dot(t1)
+    return rt_mat.astype(np.float32), rt_mat_inv.astype(np.float32)
 
 
 def rotateData(x, y):
@@ -140,3 +153,33 @@ def unchangeAugment(x):
     if np.random.rand() > 0.5:
         x = aug_seq.augment_image((x * 255.).astype(np.uint8))
     return x / 255.
+
+
+if __name__ == '__main__':
+    import time
+
+    # t1 = time.time()
+    # for i in range(640):
+    #     x = io.imread('data/images/AFLW2000-crop/image00004/image00004_cropped.jpg') / 255.
+    #     if np.random.rand() > 0.5:
+    #         x = randomColor(x)
+    #     if np.random.rand() > 0.5:
+    #         x = randomErase(x)
+    #     if np.random.rand() > 0.5:
+    #         x = aug_seq.augment_image((x * 255.).astype(np.uint8))
+    # print(time.time() - t1)
+    # import matplotlib.pyplot as plt
+    # import skimage
+    #
+    # io.imshow(x)
+    # plt.show()
+    #
+    # if np.random.rand() > 0.5:
+    #     angle = np.random.randint(-90, 90)
+    # else:
+    #     angle = 0
+    # angle = angle / 180. * np.pi
+    # [rt_mat, rt_mat_inv] = getRotateMatrix(angle, [256, 256, 3])
+    # cropped_image = skimage.transform.warp(x, rt_mat_inv, output_shape=(256, 256))
+    # io.imshow(cropped_image)
+    # plt.show()

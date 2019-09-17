@@ -13,7 +13,7 @@ from data import UVmap2Mesh, uv_kpt
 
 
 def showLandmark(image, kpt):
-    kpt=np.round(kpt).astype(np.int)
+    kpt = np.round(kpt).astype(np.int)
     image[kpt[:, 1], kpt[:, 0]] = np.array([1, 0, 0])
     image[kpt[:, 1] + 1, kpt[:, 0] + 1] = np.array([1, 0, 0])
     image[kpt[:, 1] - 1, kpt[:, 0] + 1] = np.array([1, 0, 0])
@@ -126,3 +126,6 @@ if __name__ == "__main__":
     # showUVMap('data/images/AFLW2000-out/image00002/image00002_uv_posmap.npy', None,
     #           # 'data/images/AFLW2000-output/image00002/image00002_uv_texture_map.jpg',
     #           'data/images/AFLW2000-out/image00002/image00002_init.jpg', True)
+    show(['data/images/AFLW2000-crop-offset/image00002/image00002_cropped_uv_posmap.npy',
+          'data/images/AFLW2000-crop/image00002/image00002_uv_texture_map.jpg',
+          'data/images/AFLW2000-crop-offset/image00002/image00002_cropped.jpg'], is_file=True, mode='uvmap')

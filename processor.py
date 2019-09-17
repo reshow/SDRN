@@ -12,12 +12,13 @@ import math
 from data import default_init_image_shape, default_cropped_image_shape, default_uvmap_shape, uv_coords, bfm
 from data import face_mask_np, face_mask_mean_fix_rate
 from data import bfm2Mesh, mesh2UVmap, UVmap2Mesh, renderMesh, getTransformMatrix
-from augmentation import getRotateMatrix, unchangeAugment
+from augmentation import getRotateMatrix, getRotateMatrix3D, unchangeAugment
+from numpy.linalg import inv
 
 
 class DataProcessor:
     def __init__(self,
-                 is_full_image=False, is_visualize=True, is_augment=False, is_pt3d=False,is_offset=False,
+                 is_full_image=False, is_visualize=True, is_augment=False, is_pt3d=False, is_offset=False,
                  bbox_extend_rate=1.5, marg_rate=0.1):
 
         print('bfm model loaded')
@@ -42,7 +43,7 @@ class DataProcessor:
         self.marg_rate = marg_rate
         self.is_augment = is_augment
         self.is_pt3d = is_pt3d
-        self.is_offset=is_offset
+        self.is_offset = is_offset
 
     def initialize(self, image_path, output_dir='data/temp'):
         self.image_path = image_path
@@ -66,6 +67,19 @@ class DataProcessor:
         top = np.min(kpt[:, 1])
         bottom = np.max(kpt[:, 1])
         return left, top, right, bottom
+
+    def getCropBox(self, bbox):
+        [left, top, right, bottom] = bbox
+        center = np.array([right - (right - left) / 2.0, bottom - (bottom - top) / 2.0])
+        old_size = (right - left + bottom - top) / 2.0
+        size = int(old_size * self.bbox_extend_rate)  # 1.5
+        marg = old_size * self.marg_rate  # 0.1
+        t_x = np.random.rand() * marg * 2 - marg
+        t_y = np.random.rand() * marg * 2 - marg
+        center[0] = center[0] + t_x
+        center[1] = center[1] + t_y
+        size = size * (np.random.rand() * 2 * self.marg_rate - self.marg_rate + 1)
+        return center, size
 
     def runPosmap(self):
         # 1. load image and fitted parameters
@@ -170,21 +184,16 @@ class DataProcessor:
         shape_para = self.bfm_info['Shape_Para'].astype(np.float32)
         exp_para = self.bfm_info['Exp_Para'].astype(np.float32)
         vertices = bfm.generate_vertices(shape_para, exp_para)
-        # offset position
         offset_vertices = bfm.generate_offset(shape_para, exp_para)
-        # transform mesh
 
         s = pose_para[-1, 0]
         angles = pose_para[:3, 0]
         t = pose_para[3:6, 0]
 
-        T = getTransformMatrix(s, angles, t)
+        T_bfm = getTransformMatrix(s, angles, t, height)
         temp_ones_vec = np.ones((len(vertices), 1))
         vertices_4dim = np.concatenate((vertices, temp_ones_vec), axis=-1)
-        trans_vec = vertices_4dim.dot(T.T)
-        image_vertices = trans_vec[:, 0:3]
-
-        image_vertices[:, 1] = height - image_vertices[:, 1]
+        image_vertices = vertices_4dim.dot(T_bfm.T)[:, 0:3]
 
         # 3. crop image with key points
         # 3.1 get old bbox
@@ -193,45 +202,44 @@ class DataProcessor:
         old_bbox = np.array([[left, top], [right, bottom]])
 
         # 3.2 add margin to bbox
-        center = np.array([right - (right - left) / 2.0, bottom - (bottom - top) / 2.0])
-        old_size = (right - left + bottom - top) / 2.0
-        size = int(old_size * self.bbox_extend_rate)  # 1.5
-        marg = old_size * self.marg_rate  # 0.1
-        t_x = np.random.rand() * marg * 2 - marg
-        t_y = np.random.rand() * marg * 2 - marg
-        center[0] = center[0] + t_x
-        center[1] = center[1] + t_y
-        size = size * (np.random.rand() * 2 * self.marg_rate - self.marg_rate + 1)
+        [center, size] = self.getCropBox([left, top, right, bottom])
 
         # 3.3 crop and record the transform parameters
         [crop_h, crop_w, crop_c] = default_cropped_image_shape
-        src_pts = np.array([[center[0] - size / 2, center[1] - size / 2], [center[0] - size / 2, center[1] + size / 2],
-                            [center[0] + size / 2, center[1] - size / 2]])
-        dst_pts = np.array([[0, 0], [0, crop_h - 1], [crop_w - 1, 0]])
-        tform = skimage.transform.estimate_transform('similarity', src_pts, dst_pts)
-        trans_mat = tform.params
-        trans_mat_inv = tform._inv_matrix
-        scale = trans_mat[0][0]
+
+        T_3d = np.zeros((4, 4))
+        T_3d[0, 0] = crop_w / size
+        T_3d[1, 1] = crop_h / size
+        T_3d[2, 2] = crop_w / size
+        T_3d[3, 3] = 1.
+        T_3d[0:3, 3] = [(size / 2 - center[0]) * crop_w / size, (size / 2 - center[1]) * crop_h / size, -np.min(image_vertices[:, 2]) * crop_w / size]
+        T_2d = np.zeros((3, 3))
+        T_2d[0:2, 0:2] = T_3d[0:2, 0:2]
+        T_2d[2, 2] = 1.
+        T_2d[0:2, 2] = T_3d[0:2, 3]
+
         if self.is_augment:
-            # do rotation
             if np.random.rand() > 0.5:
                 angle = np.random.randint(-90, 90)
             else:
                 angle = 0
             angle = angle / 180. * np.pi
-            [rt_mat, rt_mat_inv] = getRotateMatrix(angle, [crop_h, crop_w, crop_c])
-            trans_mat = rt_mat.dot(trans_mat)
-            trans_mat_inv = trans_mat_inv.dot(rt_mat_inv)
-        cropped_image = skimage.transform.warp(self.init_image, trans_mat_inv, output_shape=(crop_h, crop_w))
+            [T_rotate_2d, _] = getRotateMatrix(angle, [crop_h, crop_w, crop_c])
+            T_2d = T_rotate_2d.dot(T_2d)
+            [T_rotate_3d, _] = getRotateMatrix3D(angle, [crop_h, crop_w, crop_c])
+            T_3d = T_rotate_3d.dot(T_3d)
+
+        T_2d_inv = inv(T_2d)
+        cropped_image = skimage.transform.warp(self.init_image, T_2d_inv, output_shape=(crop_h, crop_w))
         # 3.4 transform face position(image vertices)
-        position = image_vertices.copy()
-        position[:, 2] = 1
-        position = np.dot(position, trans_mat.T)
-        position[:, 2] = image_vertices[:, 2] * scale  # scale z
-        position[:, 2] = position[:, 2] - np.min(position[:, 2])  # translate z
+
+        p4d = np.concatenate((image_vertices, temp_ones_vec), axis=-1)
+        position = p4d.dot(T_3d.T)[:, 0:3]
 
         offset_position = offset_vertices.copy()
-        offset_position[:, 2] = offset_position[:, 2] - np.min(offset_position[:, 2])
+        # mean_position = bfm.get_mean_shape()
+        # rebuild_position = np.concatenate((mean_position + offset_position, temp_ones_vec), axis=-1).dot(T_3d.dot(T_bfm).T)[:, 0:3]
+        # diff = rebuild_position - position
 
         # 4. uv position map: render position in uv space
         [uv_h, uv_w, uv_c] = default_uvmap_shape
@@ -249,26 +257,23 @@ class DataProcessor:
         if self.is_pt3d:
             # get gt landmark68
             init_kpt = self.bfm_info['pt3d_68'].T
-            init_kpt[:, 2] = init_kpt[:, 2] - np.min(image_vertices[:, 2])
-            new_kpt = copy.copy(init_kpt)
-            new_kpt[:, 2] = 1
-            new_kpt = np.dot(new_kpt, trans_mat.T)
-            new_kpt[:, 2] = init_kpt[:, 2] * scale
+            init_kpt_4d = np.concatenate((init_kpt, np.ones((68, 1))), axis=-1)
+            new_kpt = init_kpt_4d.dot(T_3d)[:, 0:3]
         else:
             new_kpt = []
             init_kpt = []
 
-        if self.is_augment:
-            cropped_image = unchangeAugment(cropped_image)
+        # if self.is_augment:
+        #     cropped_image = unchangeAugment(cropped_image)
             # cropped_image = gaussNoise(cropped_image)
         # from datavisualize import showMesh, show
         # show([uv_position_map, None, cropped_image], False, 'uvmap')
         # 5. save files
         sio.savemat(self.write_dir + '/' + self.image_name + '_bbox_info.mat',
-                    {'OldBbox': old_bbox, 'Bbox': bbox, 'Tform': trans_mat, 'TformInv': trans_mat_inv,
-                     'Kpt': new_kpt,
-                     'OldKpt': init_kpt})
-        np.save(self.write_dir + '/' + self.image_name + '_cropped_uv_posmap.npy', uv_position_map)
+                    {'OldBbox': old_bbox, 'Bbox': bbox, 'Tform': T_2d, 'TformInv': T_2d_inv,
+                     'Tform3d': T_3d, 'Kpt': new_kpt, 'OldKpt': init_kpt, 'TformOffset': T_3d.dot(T_bfm).astype(np.float32)})
+        np.save(self.write_dir + '/' + self.image_name + '_cropped_uv_posmap.npy', uv_position_map.astype(np.float32))
+        np.save(self.write_dir + '/' + self.image_name + '_offset_posmap.npy', uv_offset_map.astype(np.float32))
         io.imsave(self.write_dir + '/' + self.image_name + '_cropped.jpg',
                   (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
 
@@ -313,7 +318,7 @@ class DataProcessor:
 def workerProcess(image_paths, output_dirs, id, conf):
     print('worker:', id, 'start. task number:', len(image_paths))
     data_processor = DataProcessor(bbox_extend_rate=conf.bboxExtendRate, marg_rate=conf.margin, is_pt3d=conf.isOldKpt,
-                                   is_visualize=conf.isVisualize, is_full_image=conf.isFull, is_augment=conf.isAugment,is_offset=conf.isOffset)
+                                   is_visualize=conf.isVisualize, is_full_image=conf.isFull, is_augment=conf.isAugment, is_offset=conf.isOffset)
     for i in range(len(image_paths)):
         # print('\r worker ' + str(id) + ' task ' + str(i) + '/' + str(len(image_paths)) +''+  image_paths[i])
         print("worker {} task {}/{}  {}\r".format(str(id), str(i), str(len(image_paths)), image_paths[i]), end='')

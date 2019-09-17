@@ -7,8 +7,27 @@ from data import ImageData
 import os
 import random
 import multiprocessing
+from augmentation import unchangeAugment
+import threading
 
 train_data = []
+
+
+class MyThread(threading.Thread):
+
+    def __init__(self, func, args=()):
+        super(MyThread, self).__init__()
+        self.func = func
+        self.args = args
+
+    def run(self):
+        self.result = self.func(*self.args)
+
+    def get_result(self):
+        try:
+            return self.result  # 如果子线程不使用join方法，此处可能会报没有self.result的错误
+        except Exception:
+            return None
 
 
 class FitGenerator:
@@ -52,6 +71,7 @@ class FitGenerator:
             image_path = self.all_image_data[indexs[i]].cropped_image_path
             image = io.imread(image_path) / 255.
             # image = transform.resize(image, (self.image_height, self.image_width, self.image_channel))
+            image = unchangeAugment(image)
             pos_path = self.all_image_data[indexs[i]].cropped_posmap_path
             pos = np.load(pos_path)
             pos = pos / 256.
@@ -61,7 +81,7 @@ class FitGenerator:
         y = np.array(y)
         return x, y
 
-    def worker(self, indexes, q):
+    def worker(self, indexes):
         print(indexes)
         x = []
         y = []
@@ -70,13 +90,14 @@ class FitGenerator:
             image_path = self.all_image_data[index].cropped_image_path
             image = io.imread(image_path) / 255.
             # image = transform.resize(image, (self.image_height, self.image_width, self.image_channel))
+            image = unchangeAugment(image)
             pos_path = self.all_image_data[index].cropped_posmap_path
             pos = np.load(pos_path)
             pos = pos / 256.
             x.append(image)
             y.append(pos)
         print('finish')
-        q.put([x, y])
+        return x, y
 
     def multiget(self, batch_size=64, gen_mode='random', worker_num=4):
         x = []
@@ -105,20 +126,37 @@ class FitGenerator:
         st_idx = [task_per_worker * i for i in range(worker_num)]
         ed_idx = [min(batch_num, task_per_worker * (i + 1)) for i in range(worker_num)]
 
-        q = multiprocessing.Queue()
+        # q = multiprocessing.Queue()
+        # jobs = []
+        # for i in range(worker_num):
+        #     print(st_idx[i], ed_idx[i])
+        #     idx = indexes[st_idx[i]:ed_idx[i]]
+        #     p = multiprocessing.Process(target=self.worker, args=(idx, q))
+        #     jobs.append(p)
+        #     p.start()
+        # for p in jobs:
+        #     p.join()
+        # for p in jobs:
+        #     [xx, yy] = q.get()
+        #     x.extend(xx)
+        #     y.extend(yy)
         jobs = []
         for i in range(worker_num):
             print(st_idx[i], ed_idx[i])
-            idx = indexes[st_idx[i]:ed_idx[i]]
-            p = multiprocessing.Process(target=self.worker, args=(idx, q))
+            idx = np.array(indexes[st_idx[i]:ed_idx[i]])
+            p = MyThread(func=self.worker, args=(idx,))
             jobs.append(p)
+        for p in jobs:
             p.start()
+        print('xxx')
         for p in jobs:
             p.join()
+        print('xxxxx')
         for p in jobs:
-            [xx, yy] = q.get()
+            [xx, yy] = p.get_result()
             x.extend(xx)
             y.extend(yy)
+
         x = np.array(x)
         y = np.array(y)
         return x, y
@@ -144,7 +182,7 @@ if __name__ == '__main__':
     fg = FitGenerator(train_data)
     t1 = time.time()
     for _ in range(10):
-        fg.multiget(64, 'order')
+        fg.get(64, 'order')
     t2 = time.time()
     t = t2 - t1
     print(t)
