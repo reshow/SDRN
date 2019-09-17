@@ -1,7 +1,7 @@
 import keras
 import tensorflow as tf
 import numpy as np
-from keras.callbacks import ModelCheckpoint, Callback, History
+from keras.callbacks import ModelCheckpoint, Callback, History, LearningRateScheduler
 from keras.optimizers import adam
 from keras import backend as K
 from skimage import io, transform
@@ -49,8 +49,7 @@ class NetworkManager:
 
         self.error_function = args.errorFunction
 
-        self.net = RZYNet(gpu_num=args.gpu, loss_function=args.lossFunction,
-                          optimizer=args.optimizer)  # class of RZYNet
+        self.net = RZYNet(gpu_num=args.gpu, loss_function=args.lossFunction)  # class of RZYNet
 
     def addImageData(self, data_dir, add_mode='train', split_rate=0.8):
         all_data = []
@@ -86,21 +85,31 @@ class NetworkManager:
                           + str(now_time.tm_hour) + '-' + str(now_time.tm_min) + '-' + str(now_time.tm_sec)
         print('number of data images:', len(self.train_data), len(self.val_data))
         tensorboard_callback = keras.callbacks.TensorBoard(log_dir=tensorboard_dir, write_images=1, histogram_freq=0)
+
+        def scheduler(epoch):
+            # lr decays half every 5 epoch
+            if epoch % 5 == 0 and epoch != 0:
+                lr = K.get_value(self.net.model.optimizer.lr)
+                K.set_value(self.net.model.optimizer.lr, lr * 0.5)
+                print("lr changed to {}".format(lr * 0.5))
+            return K.get_value(self.net.model.optimizer.lr)
+        reduce_lr = LearningRateScheduler(scheduler)
+
         if self.gpu_num > 1:
-            self.net.paral_model.fit_generator(train_gen.gen(batch_size=self.batch_size, gen_mode='order'),
+            self.net.paral_model.fit_generator(train_gen.genPRN(batch_size=self.batch_size, gen_mode='random'),
                                                steps_per_epoch=math.ceil(
                                                    len(self.train_data) / float(self.batch_size)),
                                                epochs=self.epoch,
-                                               verbose=1, callbacks=[checkpointer, tensorboard_callback],
+                                               verbose=1, callbacks=[checkpointer, tensorboard_callback, reduce_lr],
                                                validation_data=val_gen.gen(batch_size=self.batch_size,
                                                                            gen_mode='order'),
                                                validation_steps=math.ceil(len(self.val_data) / float(self.batch_size)))
         else:
-            self.net.model.fit_generator(train_gen.gen(batch_size=self.batch_size, gen_mode='order'),
+            self.net.model.fit_generator(train_gen.genPRN(batch_size=self.batch_size, gen_mode='random'),
                                          steps_per_epoch=math.ceil(
                                              len(self.train_data) / float(self.batch_size)),
                                          epochs=self.epoch,
-                                         verbose=1, callbacks=[checkpointer, tensorboard_callback],
+                                         verbose=1, callbacks=[checkpointer, tensorboard_callback, reduce_lr],
                                          validation_data=val_gen.gen(batch_size=self.batch_size,
                                                                      gen_mode='order'),
                                          validation_steps=math.ceil(len(self.val_data) / float(self.batch_size)))
@@ -203,8 +212,6 @@ if __name__ == '__main__':
 
     parser.add_argument('-loss', '--lossFunction', default='fwrse', type=str,
                         help='loss function: rse wrse frse fwrse')
-    parser.add_argument('-optm', '--optimizer', default='adam', type=str,
-                        help='optimizer: sgd adam')
     parser.add_argument('--foreFaceMaskPath', default='uv-data/uv_face_mask.png', type=str,
                         help='')
     parser.add_argument('--weightMaskPath', default='uv-data/uv_weight_mask.png', type=str,
@@ -235,8 +242,8 @@ if __name__ == '__main__':
     net_manager = NetworkManager(run_args)
     # net_manager.net.buildPRNet()
     # net_manager.net.buildAttentionPRNet()
-    net_manager.net.buildCbamPRNet()
-    # net_manager.net.buildInitPRNet()
+    # net_manager.net.buildCbamPRNet()
+    net_manager.net.buildInitPRNet()
     if run_args.isTrain:
 
         if run_args.valDataDir is not None:

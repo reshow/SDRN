@@ -82,27 +82,30 @@ def gaussNoise(x, mean=0, var=0.001):
     return out
 
 
-def randomErase(x, max_num=5, s_l=0.02, s_h=0.4, r_1=0.3, r_2=1 / 0.3, v_l=0, v_h=1.0):
+def randomErase(x, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 / 0.3, v_l=0, v_h=1.0):
     [img_h, img_w, img_c] = x.shape
     out = x.copy()
     num = np.random.randint(1, max_num)
 
     for i in range(num):
-        while True:
-            s = np.random.uniform(s_l, s_h) * img_h * img_w
-            r = np.random.uniform(r_1, r_2)
-            w = int(np.sqrt(s / r))
-            h = int(np.sqrt(s * r))
-            left = np.random.randint(0, img_w)
-            top = np.random.randint(0, img_h)
-
-            if left + w <= img_w and top + h <= img_h:
-                break
-
+        s = np.random.uniform(s_l, s_h) * img_h * img_w
+        r = np.random.uniform(r_1, r_2)
+        w = int(np.sqrt(s / r))
+        h = int(np.sqrt(s * r))
+        left = np.random.randint(0, img_w)
+        top = np.random.randint(0, img_h)
         c = np.random.uniform(v_l, v_h)
 
-        out[top:top + h, left:left + w, :] = c
+        out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
 
+    return out
+
+
+def channelScale(x, min_rate=0.6, max_rate=1.4):
+    out = x.copy()
+    for i in range(3):
+        r = np.random.uniform(0.6, 1.4)
+        out[:, :, i] = out[:, :, i] * r
     return out
 
 
@@ -145,6 +148,14 @@ aug_seq = iaa.Sequential([
 ])
 
 
+def prnAugment(x):
+    if np.random.rand() > 0.75:
+        x = randomErase(x)
+    if np.random.rand() > 0.5:
+        x = channelScale(x)
+    return x
+
+
 def unchangeAugment(x):
     if np.random.rand() > 0.5:
         x = randomColor(x)
@@ -152,28 +163,26 @@ def unchangeAugment(x):
         x = randomErase(x)
     if np.random.rand() > 0.5:
         x = aug_seq.augment_image((x * 255.).astype(np.uint8))
-    return x / 255.
+    return x
 
 
 if __name__ == '__main__':
     import time
 
-    # t1 = time.time()
-    # for i in range(640):
-    #     x = io.imread('data/images/AFLW2000-crop/image00004/image00004_cropped.jpg') / 255.
-    #     if np.random.rand() > 0.5:
-    #         x = randomColor(x)
-    #     if np.random.rand() > 0.5:
-    #         x = randomErase(x)
-    #     if np.random.rand() > 0.5:
-    #         x = aug_seq.augment_image((x * 255.).astype(np.uint8))
-    # print(time.time() - t1)
-    # import matplotlib.pyplot as plt
-    # import skimage
-    #
-    # io.imshow(x)
-    # plt.show()
-    #
+    x = io.imread('data/images/AFLW2000-crop/image00004/image00004_cropped.jpg') / 255.
+    y = np.load('data/images/AFLW2000-crop/image00004/image00004_uv_posmap.npy')
+    t1 = time.clock()
+    import matplotlib.pyplot as plt
+    for i in range(640):
+        z=prnAugment(x)
+
+    print(time.clock() - t1)
+    io.imshow(z)
+    plt.show()
+    import skimage
+
+
+
     # if np.random.rand() > 0.5:
     #     angle = np.random.randint(-90, 90)
     # else:

@@ -13,24 +13,31 @@ from loss import getErrorFunction, getLossFunction
 import keras.backend as K
 
 
-def Conv2d_BN(x, nb_filter, kernel_size, strides=(1, 1), padding='same', name=None):
-    if name is not None:
-        bn_name = name + '_bn'
-        conv_name = name + '_conv'
-    else:
-        bn_name = None
-        conv_name = None
+def Conv2d_AC_BN(x, filters, kernel_size, strides=(1, 1), padding='same'):
+    x = Conv2D(filters, kernel_size, padding=padding, strides=strides, activation='relu')(x)
+    x = BatchNormalization(axis=-1)(x)
+    return x
 
-    x = Conv2D(nb_filter, kernel_size, padding=padding, strides=strides, activation='relu', name=conv_name)(x)
-    x = BatchNormalization(axis=3, name=bn_name)(x)
+
+def Conv2d_BN_AC(x, filters, kernel_size, strides=(1, 1), padding='same'):
+    x = Conv2D(filters, kernel_size, padding=padding, strides=strides, kernel_regularizer=regularizers.l2(0.0002))(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    return x
+
+
+def Conv2d_Transpose_BN_AC(x, filters, kernel_size, strides=(1, 1), padding='same', activation='relu'):
+    x = Conv2DTranspose(filters=filters, kernel_size=kernel_size, strides=strides, padding=padding, kernel_regularizer=regularizers.l2(0.0002))(x)
+    x = BatchNormalization()(x)
+    x = Activation(activation)(x)
     return x
 
 
 def ResBlock(inpt, nb_filter, kernel_size, strides=(1, 1), with_conv_shortcut=False):
-    x = Conv2d_BN(inpt, nb_filter=nb_filter, kernel_size=kernel_size, strides=strides, padding='same')
-    x = Conv2d_BN(x, nb_filter=nb_filter, kernel_size=kernel_size, padding='same')
+    x = Conv2d_AC_BN(inpt, filters=nb_filter, kernel_size=kernel_size, strides=strides, padding='same')
+    x = Conv2d_AC_BN(x, filters=nb_filter, kernel_size=kernel_size, padding='same')
     if with_conv_shortcut:
-        shortcut = Conv2d_BN(inpt, nb_filter=nb_filter, strides=strides, kernel_size=kernel_size)
+        shortcut = Conv2d_AC_BN(inpt, filters=nb_filter, strides=strides, kernel_size=kernel_size)
         x = add([x, shortcut])
         return x
     else:
@@ -47,9 +54,9 @@ def OffsetL1ActivityRegular(l=0.01, rate=0.25):
 
 def DistillationModule(inpt, nb_filter):
     # pathA:  kernel size 1 3 1
-    x1 = Conv2d_BN(inpt, nb_filter=nb_filter, kernel_size=1, strides=(1, 1), padding='same')
-    x1 = Conv2d_BN(x1, nb_filter=nb_filter, kernel_size=3, padding='same')
-    x1 = Conv2d_BN(x1, nb_filter=nb_filter, kernel_size=1, padding='same')
+    x1 = Conv2d_AC_BN(inpt, filters=nb_filter, kernel_size=1, strides=(1, 1), padding='same')
+    x1 = Conv2d_AC_BN(x1, filters=nb_filter, kernel_size=3, padding='same')
+    x1 = Conv2d_AC_BN(x1, filters=nb_filter, kernel_size=1, padding='same')
     x1 = add([x1, inpt])
 
     # pathB: attention  kernel size 1 3 1
@@ -143,17 +150,10 @@ def CbamModule(x, ratio=4):
     return x
 
 
-def Conv2d_BN_AC(x, nb_filter, kernel_size, strides=(1, 1), padding='same'):
-    x = Conv2D(nb_filter, kernel_size, padding=padding, strides=strides)(x)
-    x = BatchNormalization()(x)
-    x = Activation('relu')(x)
-    return x
-
-
 def CbamResBlock(inpt, nb_filter, kernel_size, strides=(1, 1), with_conv_shortcut=False):
-    x = Conv2d_BN_AC(inpt, nb_filter=int(nb_filter / 2), kernel_size=1, strides=strides, padding='same')
-    x = Conv2d_BN_AC(x, nb_filter=int(nb_filter / 2), kernel_size=kernel_size, padding='same')
-    x = Conv2d_BN_AC(x, nb_filter=nb_filter, kernel_size=1, padding='same')
+    x = Conv2d_BN_AC(inpt, filters=int(nb_filter / 2), kernel_size=1, strides=strides, padding='same')
+    x = Conv2d_BN_AC(x, filters=int(nb_filter / 2), kernel_size=kernel_size, padding='same')
+    x = Conv2d_BN_AC(x, filters=nb_filter, kernel_size=1, padding='same')
     # x = CbamModule(x)
     # if with_conv_shortcut:
     #     shortcut = Conv2d_BN_AC(inpt, nb_filter=nb_filter, strides=strides, kernel_size=kernel_size)
@@ -183,8 +183,8 @@ def CbamResBlock(inpt, nb_filter, kernel_size, strides=(1, 1), with_conv_shortcu
 
 
 def PRNResBlock(inpt, nb_filter, kernel_size=4, strides=(1, 1), with_conv_shortcut=False):
-    x = Conv2D(int(nb_filter / 2), kernel_size=1, strides=(1, 1), padding='same')(inpt)
-    x = Conv2D(int(nb_filter / 2), kernel_size=kernel_size, strides=strides, padding='same')(x)
+    x = Conv2d_BN_AC(inpt, int(nb_filter / 2), kernel_size=1, strides=(1, 1), padding='same')
+    x = Conv2d_BN_AC(x, int(nb_filter / 2), kernel_size=kernel_size, strides=strides, padding='same')
     x = Conv2D(nb_filter, kernel_size=1, strides=(1, 1), padding='same')(x)
     if with_conv_shortcut:
         shortcut = Conv2D(nb_filter, strides=strides, kernel_size=1)(inpt)

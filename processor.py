@@ -219,10 +219,7 @@ class DataProcessor:
         T_2d[0:2, 2] = T_3d[0:2, 3]
 
         if self.is_augment:
-            if np.random.rand() > 0.5:
-                angle = np.random.randint(-90, 90)
-            else:
-                angle = 0
+            angle = np.random.randint(-45, 45)
             angle = angle / 180. * np.pi
             [T_rotate_2d, _] = getRotateMatrix(angle, [crop_h, crop_w, crop_c])
             T_2d = T_rotate_2d.dot(T_2d)
@@ -236,9 +233,10 @@ class DataProcessor:
         p4d = np.concatenate((image_vertices, temp_ones_vec), axis=-1)
         position = p4d.dot(T_3d.T)[:, 0:3]
 
-        offset_position = offset_vertices.copy()
+        offset_position = offset_vertices * 1e-4
+        # T_scale_1e4 = np.diagflat([1e4, 1e4, 1e4, 1])
         # mean_position = bfm.get_mean_shape()
-        # rebuild_position = np.concatenate((mean_position + offset_position, temp_ones_vec), axis=-1).dot(T_3d.dot(T_bfm).T)[:, 0:3]
+        # rebuild_position = np.concatenate((mean_position * 1e-4 + offset_position, temp_ones_vec), axis=-1).dot(T_3d.dot(T_bfm).dot(T_scale_1e4).T)[:, 0:3]
         # diff = rebuild_position - position
 
         # 4. uv position map: render position in uv space
@@ -265,13 +263,12 @@ class DataProcessor:
 
         # if self.is_augment:
         #     cropped_image = unchangeAugment(cropped_image)
-            # cropped_image = gaussNoise(cropped_image)
-        # from datavisualize import showMesh, show
-        # show([uv_position_map, None, cropped_image], False, 'uvmap')
+        # cropped_image = gaussNoise(cropped_image)
         # 5. save files
         sio.savemat(self.write_dir + '/' + self.image_name + '_bbox_info.mat',
-                    {'OldBbox': old_bbox, 'Bbox': bbox, 'Tform': T_2d, 'TformInv': T_2d_inv,
-                     'Tform3d': T_3d, 'Kpt': new_kpt, 'OldKpt': init_kpt, 'TformOffset': T_3d.dot(T_bfm).astype(np.float32)})
+                    {'OldBbox': old_bbox, 'Bbox': bbox, 'Tform': T_2d.astype(np.float32), 'TformInv': T_2d_inv.astype(np.float32),
+                     'Tform3d': T_3d.astype(np.float32), 'Kpt': new_kpt, 'OldKpt': init_kpt,
+                     'TformOffset': T_3d.dot(T_bfm).astype(np.float32)})
         np.save(self.write_dir + '/' + self.image_name + '_cropped_uv_posmap.npy', uv_position_map.astype(np.float32))
         np.save(self.write_dir + '/' + self.image_name + '_offset_posmap.npy', uv_offset_map.astype(np.float32))
         io.imsave(self.write_dir + '/' + self.image_name + '_cropped.jpg',

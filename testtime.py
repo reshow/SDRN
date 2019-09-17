@@ -86,7 +86,7 @@ class FitGenerator:
         x = []
         y = []
         for index in indexes:
-            print(index)
+            # print(index)
             image_path = self.all_image_data[index].cropped_image_path
             image = io.imread(image_path) / 255.
             # image = transform.resize(image, (self.image_height, self.image_width, self.image_channel))
@@ -180,9 +180,9 @@ def addImageData(data_dir):
 if __name__ == '__main__':
     addImageData('data/images/AFLW2000-crop')
     fg = FitGenerator(train_data)
-    t1 = time.time()
+    t1 = time.clock()
     for _ in range(10):
-        fg.get(64, 'order')
-    t2 = time.time()
+        fg.multiget(64, 'order')
+    t2 = time.clock()
     t = t2 - t1
     print(t)

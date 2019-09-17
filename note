@@ -14,3 +14,7 @@ parameter:
   init:13353618
   initmy:13352633
   prnmy:32127209
+the number of BN parameters are not the same
+Total params: 13,372,445
+Trainable params: 13,360,555
+Non-trainable params: 11,890

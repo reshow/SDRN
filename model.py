@@ -8,17 +8,18 @@ from keras.layers import Add, GlobalMaxPooling2D
 from keras.layers import add, Flatten, Multiply
 from keras.initializers import glorot_uniform
 from keras.callbacks import ModelCheckpoint, Callback, History
+from keras.optimizers import Adam
 from keras.utils import multi_gpu_model
 from loss import getErrorFunction, getLossFunction
 
-from module import DistillationModule, Conv2d_BN, ResBlock, CbamResBlock,Conv2d_BN_AC,PRNResBlock
+from module import DistillationModule, Conv2d_AC_BN, ResBlock, CbamResBlock, Conv2d_BN_AC, PRNResBlock, Conv2d_Transpose_BN_AC
 
 
 class RZYNet:
     def __init__(self,
                  gpu_num=1,
                  loss_function='frse',
-                 optimizer='adam',
+                 optimizer=Adam(lr=1e-3),
                  ):
         self.gpu_num = gpu_num
         self.loss_function = loss_function
@@ -49,7 +50,7 @@ class RZYNet:
     def buildPRNet(self):
         feature_size = 16
         inpt = Input(shape=(256, 256, 3,))
-        x = Conv2d_BN(inpt, nb_filter=feature_size, kernel_size=4, strides=(1, 1), padding='same')  # 256 256 16
+        x = Conv2d_AC_BN(inpt, filters=feature_size, kernel_size=4, strides=(1, 1), padding='same')  # 256 256 16
         # x = Conv2D(filter=size, kernel_size=, padding='same', strides=(1,1), activation='relu', name='Conv0')(inpt)
         x = ResBlock(x, nb_filter=feature_size * 2, kernel_size=4, strides=(2, 2), with_conv_shortcut=True)  # 128 128 32
         x = ResBlock(x, nb_filter=feature_size * 2, kernel_size=4, strides=(1, 1), with_conv_shortcut=False)  # 128 128 32
@@ -86,7 +87,7 @@ class RZYNet:
     def buildAttentionPRNet(self):
         feature_size = 16
         inpt = Input(shape=(256, 256, 3,))
-        x = Conv2d_BN(inpt, nb_filter=feature_size, kernel_size=4, strides=(1, 1), padding='same')  # 256 256 16
+        x = Conv2d_AC_BN(inpt, filters=feature_size, kernel_size=4, strides=(1, 1), padding='same')  # 256 256 16
         # x = Conv2D(filter=size, kernel_size=, padding='same', strides=(1,1), activation='relu', name='Conv0')(inpt)
         x = ResBlock(x, nb_filter=feature_size * 2, kernel_size=4, strides=(2, 2), with_conv_shortcut=True)  # 128 128 32
         x = ResBlock(x, nb_filter=feature_size * 2, kernel_size=4, strides=(1, 1), with_conv_shortcut=False)  # 128 128 32
@@ -127,7 +128,7 @@ class RZYNet:
     def buildInitPRNet(self):
         feature_size = 16
         inpt = Input(shape=(256, 256, 3,))
-        x = Conv2D(feature_size, kernel_size=4, strides=(1, 1), padding='same')(inpt)  # 256 256 16
+        x = Conv2d_BN_AC(inpt, filters=feature_size, kernel_size=4, strides=(1, 1), padding='same')  # 256 256 16
         # x = Conv2D(filter=size, kernel_size=, padding='same', strides=(1,1), activation='relu', name='Conv0')(inpt)
         x = PRNResBlock(x, nb_filter=feature_size * 2, kernel_size=4, strides=(2, 2), with_conv_shortcut=True)  # 128 128 32
         x = PRNResBlock(x, nb_filter=feature_size * 2, kernel_size=4, strides=(1, 1), with_conv_shortcut=False)  # 128 128 32
@@ -140,23 +141,23 @@ class RZYNet:
         x = PRNResBlock(x, nb_filter=feature_size * 32, kernel_size=4, strides=(2, 2), with_conv_shortcut=True)  # 8 8 512
         x = PRNResBlock(x, nb_filter=feature_size * 32, kernel_size=4, strides=(1, 1), with_conv_shortcut=False)  # 8 8 512
 
-        x = Conv2DTranspose(filters=feature_size * 32, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 8 8 512
-        x = Conv2DTranspose(filters=feature_size * 16, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 16 16 256
-        x = Conv2DTranspose(filters=feature_size * 16, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 16 16 256
-        x = Conv2DTranspose(filters=feature_size * 16, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 16 16 256
-        x = Conv2DTranspose(filters=feature_size * 8, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 32 32 128
-        x = Conv2DTranspose(filters=feature_size * 8, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 32 32 128
-        x = Conv2DTranspose(filters=feature_size * 8, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 32 32 128
-        x = Conv2DTranspose(filters=feature_size * 4, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 64 64 64
-        x = Conv2DTranspose(filters=feature_size * 4, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 64 64 64
-        x = Conv2DTranspose(filters=feature_size * 4, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 64 64 64
-        x = Conv2DTranspose(filters=feature_size * 2, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 128 128 32
-        x = Conv2DTranspose(filters=feature_size * 2, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 128 128 32
-        x = Conv2DTranspose(filters=feature_size, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 256 256 16
-        x = Conv2DTranspose(filters=feature_size, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 256 256 16
-        x = Conv2DTranspose(filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 256 256 3
-        x = Conv2DTranspose(filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 256 256 3
-        x = Conv2DTranspose(filters=3, kernel_size=4, strides=(1, 1), activation='sigmoid', padding='same')(x)  # 256 256 3
+        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 32, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 8 8 512
+        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 16, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 16 16 256
+        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 16, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 16 16 256
+        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 16, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 16 16 256
+        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 8, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 32 32 128
+        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 8, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 32 32 128
+        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 8, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 32 32 128
+        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 4, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 64 64 64
+        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 4, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 64 64 64
+        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 4, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 64 64 64
+        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 2, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 128 128 32
+        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 2, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 128 128 32
+        x = Conv2d_Transpose_BN_AC(x, filters=feature_size, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 256 256 16
+        x = Conv2d_Transpose_BN_AC(x, filters=feature_size, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 256 256 16
+        x = Conv2d_Transpose_BN_AC(x, filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 256 256 3
+        x = Conv2d_Transpose_BN_AC(x, filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 256 256 3
+        x = Conv2d_Transpose_BN_AC(x, filters=3, kernel_size=4, strides=(1, 1), activation='sigmoid', padding='same')  # 256 256 3
         model = Model(inputs=inpt, outputs=x)
         self.model = model
         self.compileModel()

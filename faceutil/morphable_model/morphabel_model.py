@@ -157,9 +157,9 @@ class MorphabelModel(object):
         """
         vertices = self.model['shapePC'].dot(shape_para) + self.model['expPC'].dot(exp_para)
         vertices = np.reshape(vertices, [int(3), int(len(vertices) / 3)], 'F').T
-        return vertices
+        return vertices.astype(np.float32)
 
     def get_mean_shape(self):
         vertices = self.model['shapeMU'] + self.model['expMU']
         vertices = np.reshape(vertices, [int(3), int(len(vertices) / 3)], 'F').T
-        return vertices
+        return vertices.astype(np.float32)

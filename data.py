@@ -19,6 +19,8 @@ from PIL import ImageEnhance, ImageOps, ImageFile, Image
 import augmentation
 from math import cos, sin
 import random
+import threading
+import psutil
 
 #  global data
 bfm = MorphabelModel('data/Out/BFM.mat')
@@ -291,6 +293,9 @@ class ImageData:
         self.texture_image_path = ''
         self.bbox_info_path = ''
 
+        self.image = None
+        self.posmap = None
+
     def readPath(self, image_dir):
         image_name = image_dir.split('/')[-1]
         self.cropped_image_path = image_dir + '/' + image_name + '_cropped.jpg'
@@ -303,6 +308,22 @@ class ImageData:
 
         self.bbox_info_path = image_dir + '/' + image_name + '_bbox_info.mat'
         # TODO:read bbox and tform
+
+
+class MyThread(threading.Thread):
+    def __init__(self, func, args=()):
+        super(MyThread, self).__init__()
+        self.func = func
+        self.args = args
+
+    def run(self):
+        self.result = self.func(*self.args)
+
+    def get_result(self):
+        try:
+            return self.result  # 如果子线程不使用join方法，此处可能会报没有self.result的错误
+        except Exception:
+            return None
 
 
 class FitGenerator:
@@ -351,6 +372,77 @@ class FitGenerator:
                 pos = pos / 256.
                 x.append(image)
                 y.append(pos)
+            x = np.array(x)
+            y = np.array(y)
+            yield x, y
+
+    def workerPRN(self, indexes):
+        # print(indexes)
+        x = []
+        y = []
+        for index in indexes:
+            # print(index)
+            if self.all_image_data[index].image is None:
+                image_path = self.all_image_data[index].cropped_image_path
+                image = io.imread(image_path)
+                self.all_image_data[index].image = image.astype(np.uint8)
+                image = image / 255.
+            else:
+                image = self.all_image_data[index].image / 255.
+            image = augmentation.prnAugment(image)
+
+            if self.all_image_data[index].posmap is None:
+                pos_path = self.all_image_data[index].cropped_posmap_path
+                pos = np.load(pos_path)
+                self.all_image_data[index].posmap = pos.astype(np.float16)
+            else:
+                pos = self.all_image_data[index].posmap
+            pos = pos / 256.
+            x.append(image)
+            y.append(pos)
+        # print('finish')
+        return x, y
+
+    def genPRN(self, batch_size=64, gen_mode='random', do_shuffle=False, worker_num=4):
+        while True:
+            x = []
+            y = []
+            if gen_mode == 'random':
+                batch_num = batch_size
+                indexes = np.random.randint(len(self.all_image_data), size=batch_size)
+            elif gen_mode == 'order':
+                if (self.next_index == 0) & do_shuffle:
+                    random.shuffle(self.all_image_data)
+                if batch_size > len(self.all_image_data):
+                    batch_size = len(self.all_image_data)
+                batch_num = batch_size
+                if self.next_index + batch_size >= len(self.all_image_data):
+                    batch_num = len(self.all_image_data) - self.next_index
+                indexes = np.array(range(self.next_index, self.next_index + batch_num))
+                # print(self.next_index,self.next_index+batch_num)
+                self.next_index = (self.next_index + batch_num) % len(self.all_image_data)
+            else:
+                indexes = None
+                batch_num = 0
+                print('unknown generate mode')
+
+            task_per_worker = math.ceil(batch_num / worker_num)
+            st_idx = [task_per_worker * i for i in range(worker_num)]
+            ed_idx = [min(batch_num, task_per_worker * (i + 1)) for i in range(worker_num)]
+
+            jobs = []
+            for i in range(worker_num):
+                idx = np.array(indexes[st_idx[i]:ed_idx[i]])
+                p = MyThread(func=self.workerPRN, args=(idx,))
+                jobs.append(p)
+            for p in jobs:
+                p.start()
+            for p in jobs:
+                p.join()
+            for p in jobs:
+                [xx, yy] = p.get_result()
+                x.extend(xx)
+                y.extend(yy)
             x = np.array(x)
             y = np.array(y)
             yield x, y
