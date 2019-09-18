@@ -96,14 +96,14 @@ class NetworkManager:
                 return K.get_value(self.net.paral_model.optimizer.lr)
 
             reduce_lr = LearningRateScheduler(scheduler)
-            self.net.paral_model.fit_generator(train_gen.genPRN(batch_size=self.batch_size, gen_mode='random'),
+            self.net.paral_model.fit_generator(train_gen.genPRN(batch_size=self.batch_size*self.gpu_num, gen_mode='random'),
                                                steps_per_epoch=math.ceil(
-                                                   len(self.train_data) / float(self.batch_size)),
+                                                   len(self.train_data) / float(self.batch_size*self.gpu_num)),
                                                epochs=self.epoch,
                                                verbose=1, callbacks=[checkpointer, tensorboard_callback, reduce_lr],
-                                               validation_data=val_gen.gen(batch_size=self.batch_size,
+                                               validation_data=val_gen.gen(batch_size=self.batch_size*self.gpu_num,
                                                                            gen_mode='order'),
-                                               validation_steps=math.ceil(len(self.val_data) / float(self.batch_size)))
+                                               validation_steps=math.ceil(len(self.val_data) / float(self.batch_size*self.gpu_num)))
         else:
             def scheduler(epoch):
                 # lr decays half every 5 epoch
