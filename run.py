@@ -79,7 +79,10 @@ class NetworkManager:
                                                verbose=1,
                                                save_best_only=True, save_weights_only=True)
         train_gen = FitGenerator(self.train_data)
+        train_gen_func = train_gen.genPRN(batch_size=self.batch_size * self.gpu_num, gen_mode='random')
         val_gen = FitGenerator(self.val_data)
+        val_gen_func = val_gen.gen(batch_size=self.batch_size * self.gpu_num, gen_mode='order')
+
         now_time = time.localtime()
         tensorboard_dir = 'tmp' + '/' + str(now_time.tm_year) + '-' + str(now_time.tm_mon) + '-' + str(now_time.tm_mday) + '-' \
                           + str(now_time.tm_hour) + '-' + str(now_time.tm_min) + '-' + str(now_time.tm_sec)
@@ -87,41 +90,26 @@ class NetworkManager:
         tensorboard_callback = keras.callbacks.TensorBoard(log_dir=tensorboard_dir, write_images=1, histogram_freq=0)
 
         if self.gpu_num > 1:
-            def scheduler(epoch):
-                # lr decays half every 5 epoch
-                if epoch % 5 == 0 and epoch != 0:
-                    lr = K.get_value(self.net.paral_model.optimizer.lr)
-                    K.set_value(self.net.paral_model.optimizer.lr, lr * 0.5)
-                    print("lr changed to {}".format(lr * 0.5))
-                return K.get_value(self.net.paral_model.optimizer.lr)
-
-            reduce_lr = LearningRateScheduler(scheduler)
-            self.net.paral_model.fit_generator(train_gen.genPRN(batch_size=self.batch_size*self.gpu_num, gen_mode='random'),
-                                               steps_per_epoch=math.ceil(
-                                                   len(self.train_data) / float(self.batch_size*self.gpu_num)),
-                                               epochs=self.epoch,
-                                               verbose=1, callbacks=[checkpointer, tensorboard_callback, reduce_lr],
-                                               validation_data=val_gen.gen(batch_size=self.batch_size*self.gpu_num,
-                                                                           gen_mode='order'),
-                                               validation_steps=math.ceil(len(self.val_data) / float(self.batch_size*self.gpu_num)))
+            target_model = self.net.paral_model
         else:
-            def scheduler(epoch):
-                # lr decays half every 5 epoch
-                if epoch % 5 == 0 and epoch != 0:
-                    lr = K.get_value(self.net.model.optimizer.lr)
-                    K.set_value(self.net.model.optimizer.lr, lr * 0.5)
-                    print("lr changed to {}".format(lr * 0.5))
-                return K.get_value(self.net.model.optimizer.lr)
+            target_model = self.net.model
 
-            reduce_lr = LearningRateScheduler(scheduler)
-            self.net.model.fit_generator(train_gen.genPRN(batch_size=self.batch_size, gen_mode='random'),
-                                         steps_per_epoch=math.ceil(
-                                             len(self.train_data) / float(self.batch_size)),
-                                         epochs=self.epoch,
-                                         verbose=1, callbacks=[checkpointer, tensorboard_callback, reduce_lr],
-                                         validation_data=val_gen.gen(batch_size=self.batch_size,
-                                                                     gen_mode='order'),
-                                         validation_steps=math.ceil(len(self.val_data) / float(self.batch_size)))
+        def scheduler(epoch):
+            # lr decays half every 5 epoch
+            if epoch % 5 == 0 and epoch != 0:
+                lr = K.get_value(target_model.optimizer.lr)
+                K.set_value(target_model.optimizer.lr, lr * 0.5)
+                print("lr changed to {}".format(lr * 0.5))
+            return K.get_value(target_model.optimizer.lr)
+
+        reduce_lr = LearningRateScheduler(scheduler)
+        target_model.fit_generator(train_gen_func,
+                                   steps_per_epoch=math.ceil(
+                                       len(self.train_data) / float(self.batch_size * self.gpu_num)),
+                                   epochs=self.epoch,
+                                   verbose=1, callbacks=[checkpointer, tensorboard_callback, reduce_lr],
+                                   validation_data=val_gen_func,
+                                   validation_steps=math.ceil(len(self.val_data) / float(self.batch_size * self.gpu_num)))
 
     def test(self, image_data_list, error_func_list=None, is_visualize=False):
         X = []
