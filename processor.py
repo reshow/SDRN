@@ -73,12 +73,12 @@ class DataProcessor:
         center = np.array([right - (right - left) / 2.0, bottom - (bottom - top) / 2.0])
         old_size = (right - left + bottom - top) / 2.0
         size = int(old_size * self.bbox_extend_rate)  # 1.5
-        # marg = old_size * self.marg_rate  # 0.1
-        # t_x = np.random.rand() * marg * 2 - marg
-        # t_y = np.random.rand() * marg * 2 - marg
-        # center[0] = center[0] + t_x
-        # center[1] = center[1] + t_y
-        # size = size * (np.random.rand() * 2 * self.marg_rate - self.marg_rate + 1)
+        marg = old_size * self.marg_rate  # 0.1
+        t_x = np.random.rand() * marg * 2 - marg
+        t_y = np.random.rand() * marg * 2 - marg
+        center[0] = center[0] + t_x
+        center[1] = center[1] + t_y
+        size = size * (np.random.rand() * 2 * self.marg_rate - self.marg_rate + 1)
         return center, size
 
     def runPosmap(self):
