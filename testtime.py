@@ -98,6 +98,9 @@ class FitGenerator:
             pos = pos / 256.
             x.append(image)
             y.append(pos)
+
+            if np.max(pos[:, :, 2]) > 1:
+                print(np.max(pos[:, :, 2]))
         print('finish')
         return x, y
 

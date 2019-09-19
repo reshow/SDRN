@@ -1,33 +1,27 @@
 import keras
 import tensorflow as tf
 import numpy as np
-from keras.models import Model
-from keras.layers import Input, Dense, Dropout, BatchNormalization, Conv2D, MaxPooling2D, AveragePooling2D, concatenate, \
-    Activation, ZeroPadding2D, Conv2DTranspose
-from keras.layers import Add, GlobalMaxPooling2D
-from keras.layers import add, Flatten
-from keras.initializers import glorot_uniform
-from keras.callbacks import ModelCheckpoint, Callback, History
-from keras.optimizers import adam
 from keras import backend as K
 from keras.utils import multi_gpu_model
 from skimage import io, transform
-import os
-import matplotlib.pyplot as plt
-import math
-from data import ImageData, FitGenerator
-import time
-import argparse
-import ast
-import scipy.io as sio
-import copy
-from data import default_init_image_shape, default_cropped_image_shape, default_uvmap_shape, uv_coords, bfm, uv_kpt
+from data import uv_kpt
 from data import face_mask_np, face_mask_mean_fix_rate
-from data import bfm2Mesh, mesh2UVmap, UVmap2Mesh, renderMesh
 
 weight_mask = io.imread('uv-data/uv_weight_mask.png') / 255.
 weight_mask = K.variable(weight_mask)
 face_mask = K.variable(face_mask_np)
+face_mask_3D = K.variable(np.repeat(np.reshape(face_mask_np, (256, 256, 1)), 3, -1))
+
+
+def ReduceDepth(x):
+    x = x * face_mask_3D
+    part01 = x[:, :, :, 0:2]
+    part2 = x[:, :, :, 2:3]
+
+    min_x = K.mean(part2, axis=[1, 2], keepdims=True)
+    part2 = part2 - min_x
+    x = K.concatenate((part01, part2), axis=-1)
+    return x
 
 
 def PRNLoss(is_foreface=False, is_weighted=False, rate=1.0):
@@ -40,6 +34,9 @@ def PRNLoss(is_foreface=False, is_weighted=False, rate=1.0):
     """
 
     def templateLoss(y_true, y_pred):
+        # y_true = ReduceDepth(y_true)
+        # y_pred = ReduceDepth(y_pred)
+
         dist = K.sqrt(K.sum(K.square(K.abs(y_true - y_pred)), axis=-1))
         if is_weighted:
             dist = dist * weight_mask
@@ -47,6 +44,14 @@ def PRNLoss(is_foreface=False, is_weighted=False, rate=1.0):
             dist = dist * face_mask * face_mask_mean_fix_rate
         loss = K.mean(dist)
         return loss * rate
+
+    return templateLoss
+
+
+def ParamLoss(rate=1.0):
+    def templateLoss(y_true, y_pred):
+        dist = K.mean(K.abs(y_true - y_pred))
+        return dist * rate
 
     return templateLoss
 
@@ -60,6 +65,8 @@ def getLossFunction(loss_func_name='SquareError', rate=1.0):
         return PRNLoss(is_foreface=True, is_weighted=False, rate=rate)
     elif loss_func_name == 'ForefaceWeightedRootSquareError' or loss_func_name == 'fwrse':
         return PRNLoss(is_foreface=True, is_weighted=True, rate=rate)
+    elif loss_func_name == 'mae':
+        return ParamLoss(rate=rate)
     else:
         print('unknown loss:', loss_func_name)
 

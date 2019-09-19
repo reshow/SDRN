@@ -14,14 +14,14 @@ from keras.utils import multi_gpu_model
 from loss import getErrorFunction, getLossFunction
 
 from module import DistillationModule, Conv2d_AC_BN, ResBlock, \
-    CbamResBlock, Conv2d_BN_AC, PRNResBlock, Conv2d_Transpose_BN_AC, RPFOModule
+    CbamResBlock, Conv2d_BN_AC, PRNResBlock, Conv2d_Transpose_BN_AC, RPFOModule, DecoderModule
 
 
 class RZYNet:
     def __init__(self,
                  gpu_num=1,
                  loss_function='frse',
-                 optimizer=Adam(lr=1e-3),
+                 optimizer=Adam(lr=1e-4),
                  ):
         self.gpu_num = gpu_num
         self.loss_function = loss_function
@@ -57,18 +57,18 @@ class RZYNet:
         if self.gpu_num > 1:
             para_model = multi_gpu_model(model, gpus=self.gpu_num)
             para_model.compile(loss={'Posmap': getLossFunction(self.loss_function, rate=0.01), 'Offset': getLossFunction(self.loss_function, rate=10.0),
-                                     'ParamR': 'mae', 'ParamT': 'mae'},
+                                     'ParamR': 'mae', 'ParamT': 'mae', 'ParamS': 'mae'},
                                optimizer=self.optimizer,
                                metrics={'Posmap': getLossFunction('frse'), 'Offset': getLossFunction('frse'),
-                                        'ParamR': 'mae', 'ParamT': 'mae'})
+                                        'ParamR': 'mae', 'ParamT': 'mae', 'ParamS': 'mae'})
             para_model.summary()
             self.paral_model = para_model
         else:
-            model.compile(loss={'Posmap': getLossFunction(self.loss_function, rate=0), 'Offset': getLossFunction(self.loss_function, rate=0),
-                                'ParamR': 'mae', 'ParamT': 'mae'},
+            model.compile(loss={'Posmap': getLossFunction(self.loss_function, rate=0), 'Offset': getLossFunction(self.loss_function, rate=5),
+                                'ParamR': getLossFunction('mae', rate=1), 'ParamT': getLossFunction('mae', rate=1), 'ParamS': getLossFunction('mae', rate=1)},
                           optimizer=self.optimizer,
                           metrics={'Posmap': getLossFunction('frse'), 'Offset': getLossFunction('frse'),
-                                   'ParamR': 'mae', 'ParamT': 'mae'})
+                                   'ParamR': 'mae', 'ParamT': 'mae', 'ParamS': 'mae'})
             model.summary()
             self.model = model
 
@@ -88,22 +88,7 @@ class RZYNet:
         x = ResBlock(x, nb_filter=feature_size * 32, kernel_size=4, strides=(2, 2), with_conv_shortcut=True)  # 8 8 512
         x = ResBlock(x, nb_filter=feature_size * 32, kernel_size=4, strides=(1, 1), with_conv_shortcut=False)  # 8 8 512
 
-        x = Conv2DTranspose(filters=feature_size * 32, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 8 8 512
-        x = Conv2DTranspose(filters=feature_size * 16, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 16 16 256
-        x = Conv2DTranspose(filters=feature_size * 16, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 16 16 256
-        x = Conv2DTranspose(filters=feature_size * 16, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 16 16 256
-        x = Conv2DTranspose(filters=feature_size * 8, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 32 32 128
-        x = Conv2DTranspose(filters=feature_size * 8, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 32 32 128
-        x = Conv2DTranspose(filters=feature_size * 8, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 32 32 128
-        x = Conv2DTranspose(filters=feature_size * 4, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 64 64 64
-        x = Conv2DTranspose(filters=feature_size * 4, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 64 64 64
-        x = Conv2DTranspose(filters=feature_size * 4, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 64 64 64
-        x = Conv2DTranspose(filters=feature_size * 2, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 128 128 32
-        x = Conv2DTranspose(filters=feature_size * 2, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 128 128 32
-        x = Conv2DTranspose(filters=feature_size, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 256 256 16
-        x = Conv2DTranspose(filters=feature_size, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 256 256 16
-        x = Conv2DTranspose(filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 256 256 3
-        x = Conv2DTranspose(filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 256 256 3
+        x = DecoderModule(x, feature_size=feature_size)
         x = Conv2DTranspose(filters=3, kernel_size=4, strides=(1, 1), activation='sigmoid', padding='same')(x)  # 256 256 3
         model = Model(inputs=inpt, outputs=x)
         self.model = model
@@ -128,22 +113,7 @@ class RZYNet:
         x = ResBlock(x, nb_filter=feature_size * 32, kernel_size=4, strides=(2, 2), with_conv_shortcut=True)  # 8 8 512
         x = ResBlock(x, nb_filter=feature_size * 32, kernel_size=4, strides=(1, 1), with_conv_shortcut=False)  # 8 8 512
 
-        x = Conv2DTranspose(filters=feature_size * 32, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 8 8 512
-        x = Conv2DTranspose(filters=feature_size * 16, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 16 16 256
-        x = Conv2DTranspose(filters=feature_size * 16, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 16 16 256
-        x = Conv2DTranspose(filters=feature_size * 16, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 16 16 256
-        x = Conv2DTranspose(filters=feature_size * 8, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 32 32 128
-        x = Conv2DTranspose(filters=feature_size * 8, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 32 32 128
-        x = Conv2DTranspose(filters=feature_size * 8, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 32 32 128
-        x = Conv2DTranspose(filters=feature_size * 4, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 64 64 64
-        x = Conv2DTranspose(filters=feature_size * 4, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 64 64 64
-        x = Conv2DTranspose(filters=feature_size * 4, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 64 64 64
-        x = Conv2DTranspose(filters=feature_size * 2, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 128 128 32
-        x = Conv2DTranspose(filters=feature_size * 2, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 128 128 32
-        x = Conv2DTranspose(filters=feature_size, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 256 256 16
-        x = Conv2DTranspose(filters=feature_size, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 256 256 16
-        x = Conv2DTranspose(filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 256 256 3
-        x = Conv2DTranspose(filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 256 256 3
+        x = DecoderModule(x, feature_size=feature_size)
         x = Conv2DTranspose(filters=3, kernel_size=4, strides=(1, 1), activation='sigmoid', padding='same')(x)  # 256 256 3
 
         model = Model(inputs=inpt, outputs=x)
@@ -183,6 +153,7 @@ class RZYNet:
         x = Conv2d_Transpose_BN_AC(x, filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 256 256 3
         x = Conv2d_Transpose_BN_AC(x, filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 256 256 3
         x = Conv2d_Transpose_BN_AC(x, filters=3, kernel_size=4, strides=(1, 1), activation='sigmoid', padding='same')  # 256 256 3
+
         model = Model(inputs=inpt, outputs=x)
         self.model = model
         self.compileModel()
@@ -204,22 +175,7 @@ class RZYNet:
         x = CbamResBlock(x, nb_filter=feature_size * 32, kernel_size=4, strides=(2, 2), with_conv_shortcut=True)  # 8 8 512
         x = CbamResBlock(x, nb_filter=feature_size * 32, kernel_size=4, strides=(1, 1), with_conv_shortcut=False)  # 8 8 512
 
-        x = Conv2DTranspose(filters=feature_size * 32, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 8 8 512
-        x = Conv2DTranspose(filters=feature_size * 16, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 16 16 256
-        x = Conv2DTranspose(filters=feature_size * 16, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 16 16 256
-        x = Conv2DTranspose(filters=feature_size * 16, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 16 16 256
-        x = Conv2DTranspose(filters=feature_size * 8, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 32 32 128
-        x = Conv2DTranspose(filters=feature_size * 8, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 32 32 128
-        x = Conv2DTranspose(filters=feature_size * 8, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 32 32 128
-        x = Conv2DTranspose(filters=feature_size * 4, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 64 64 64
-        x = Conv2DTranspose(filters=feature_size * 4, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 64 64 64
-        x = Conv2DTranspose(filters=feature_size * 4, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 64 64 64
-        x = Conv2DTranspose(filters=feature_size * 2, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 128 128 32
-        x = Conv2DTranspose(filters=feature_size * 2, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 128 128 32
-        x = Conv2DTranspose(filters=feature_size, kernel_size=4, strides=(2, 2), activation='relu', padding='same')(x)  # 256 256 16
-        x = Conv2DTranspose(filters=feature_size, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 256 256 16
-        x = Conv2DTranspose(filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 256 256 3
-        x = Conv2DTranspose(filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')(x)  # 256 256 3
+        x = DecoderModule(x)
         x = Conv2DTranspose(filters=3, kernel_size=4, strides=(1, 1), activation='sigmoid', padding='same')(x)  # 256 256 3
 
         model = Model(inputs=inpt, outputs=x)
@@ -243,31 +199,18 @@ class RZYNet:
         fs = PRNResBlock(x, filters=feature_size * 32, kernel_size=4, strides=(1, 1), with_conv_shortcut=False)  # 8 8 512
 
         d = Flatten()(fs)
-        d = Dense(128, activation='relu', kernel_regularizer=regularizers.l2(0.00001))(d)
-        r = Dense(9, name='ParamR')(d)
-        t = Dense(3, name='ParamT')(d)
+        d = Dense(512, activation='relu', kernel_regularizer=regularizers.l2(0.00001))(d)
+        d = Dense(512, activation='relu', kernel_regularizer=regularizers.l2(0.00001))(d)
+        r = Dense(3, activation='tanh', name='ParamR')(d)
+        t = Dense(3, activation='tanh', name='ParamT')(d)
+        s = Dense(1, activation='sigmoid', name='ParamS')(d)
 
-        x = Conv2d_Transpose_BN_AC(fs, filters=feature_size * 32, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 8 8 512
-        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 16, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 16 16 256
-        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 16, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 16 16 256
-        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 16, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 16 16 256
-        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 8, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 32 32 128
-        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 8, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 32 32 128
-        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 8, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 32 32 128
-        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 4, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 64 64 64
-        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 4, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 64 64 64
-        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 4, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 64 64 64
-        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 2, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 128 128 32
-        x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 2, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 128 128 32
-        x = Conv2d_Transpose_BN_AC(x, filters=feature_size, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 256 256 16
-        x = Conv2d_Transpose_BN_AC(x, filters=feature_size, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 256 256 16
-        x = Conv2d_Transpose_BN_AC(x, filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 256 256 3
-        x = Conv2d_Transpose_BN_AC(x, filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 256 256 3
+        x = DecoderModule(fs, feature_size=feature_size)  # 256 256 3
         offset = Conv2d_Transpose_BN_AC(x, filters=3, kernel_size=4, strides=(1, 1), activation='sigmoid', padding='same', name='Offset')  # 256 256 3
 
-        pos = Lambda(RPFOModule, output_shape=(256, 256, 3), name='Posmap')([offset, r, t])
+        pos = Lambda(RPFOModule, output_shape=(256, 256, 3), name='Posmap')([offset, r, t, s])
         # keras.layers.core.Lambda(function, output_shape=None, mask=None, arguments=None)
 
-        model = Model(inputs=inpt, outputs=[pos, offset, r, t])
+        model = Model(inputs=inpt, outputs=[pos, offset, r, t, s])
         self.model = model
         self.compileOffsetModel()

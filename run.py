@@ -17,6 +17,7 @@ import copy
 from loss import getErrorFunction
 from data import ImageData, FitGenerator, getLandmark
 from visualize import show, showMesh, showImage, showLandmark, showLandmark2
+from loss import face_mask_np
 
 
 class ParallelModelCheckpoint(ModelCheckpoint):
@@ -54,7 +55,7 @@ class NetworkManager:
         self.is_offset_data = False
 
     def buildModel(self, args):
-        print('bulding',args.netStructure)
+        print('bulding', args.netStructure)
         if args.netStructure == 'PRNet':
             net_manager.net.buildPRNet()
         elif args.netStructure == 'CbamPRNet':
@@ -170,6 +171,12 @@ class NetworkManager:
                 kpt_gt = getLandmark(Y[i])
                 kpt_pred = getLandmark(P[i])
                 showLandmark2(X[i], kpt_gt, kpt_pred)
+
+                diff = np.square(Y[i] - P[i])
+                dist = np.sqrt(np.sum(diff, axis=-1))
+                dist = dist * face_mask_np
+                plt.imshow(dist)
+                plt.show()
 
         print(np.mean(error_list, axis=0))
         return np.array(error_list)

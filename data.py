@@ -20,6 +20,7 @@ import augmentation
 from math import cos, sin
 import random
 import threading
+from math import sin, cos, asin, acos, atan
 
 #  global data
 bfm = MorphabelModel('data/Out/BFM.mat')
@@ -57,7 +58,7 @@ def readUVKpt(uv_kpt_path):
 
 def getTNormalizer():
     T_norm = np.zeros((4, 4))
-    T_norm[0:3, 0:3] = 1e3
+    T_norm[0:3, 0:3] = 1
     T_norm[0:3, 3] = 1 / 256.
     T_norm[3, 3] = 1.
     return T_norm.astype(np.float32)
@@ -134,7 +135,8 @@ def bfm2Mesh(bfm_info, image_shape=default_init_image_shape):
     image_vertices[:, 1] = image_h - image_vertices[:, 1]
     mesh_info = {'vertices': image_vertices, 'triangles': bfm.full_triangles,
                  'full_triangles': bfm.full_triangles,
-                 'colors': tex_color, 'landmarks': bfm_info['pt3d_68'].T}
+                 'colors': tex_color}
+    # 'landmarks': bfm_info['pt3d_68'].T
     return mesh_info
 
 
@@ -291,6 +293,81 @@ def getTransformMatrix(s, angles, t, height):
     H[1, 3] = height
     T = H.dot(T)
     return T.astype(np.float32)
+
+
+def getRotationMatrixFromAxisAngle(x, y, z):
+    Rx = np.array([[1, 0, 0],
+                   [0, cos(x), sin(x)],
+                   [0, -sin(x), cos(x)]])
+    Ry = np.array([[cos(y), 0, -sin(y)],
+                   [0, 1, 0],
+                   [sin(y), 0, cos(y)]])
+    Rz = np.array([[cos(z), sin(z), 0],
+                   [-sin(z), cos(z), 0],
+                   [0, 0, 1]])
+    # rotate
+    R = Rx.dot(Ry).dot(Rz)
+    R = R.astype(np.float32)
+    # print(R)
+    return R
+
+
+def isMatSame(r1, r2, thresh=1e-1):
+    diff = np.abs(r1 - r2)
+    if (diff < thresh).all():
+        return True
+    else:
+        return False
+
+
+def estimateRotationAngle(R):
+    y = asin(-R[0, 2])
+    cosx = R[2, 2] / cos(y)
+    sinx = R[1, 2] / cos(y)
+    cosz = R[0, 0] / cos(y)
+    sinz = R[0, 1] / cos(y)
+    if cosx >= 0:
+        x = asin(sinx)
+    elif sinx >= 0 and cosx < 0:
+        x = acos(cosx)
+    else:
+        x = -acos(cosx)
+
+    if cosz >= 0:
+        z = asin(sinz)
+    elif sinz >= 0 and cosz < 0:
+        z = acos(cosz)
+    else:
+        z = -acos(cosz)
+
+    maybe_R = getRotationMatrixFromAxisAngle(x, y, z)
+    if isMatSame(R, maybe_R):
+        return x, y, z
+
+    y = np.pi - asin(-R[0, 2])
+    cosx = R[2, 2] / cos(y)
+    sinx = R[1, 2] / cos(y)
+    cosz = R[0, 0] / cos(y)
+    sinz = R[0, 1] / cos(y)
+    if cosx >= 0:
+        x = asin(sinx)
+    elif sinx >= 0 and cosx < 0:
+        x = acos(cosx)
+    else:
+        x = -acos(cosx)
+
+    if cosz >= 0:
+        z = asin(sinz)
+    elif sinz >= 0 and cosz < 0:
+        z = acos(cosz)
+    else:
+        z = -acos(cosz)
+
+    maybe_R = getRotationMatrixFromAxisAngle(x, y, z)
+    if isMatSame(R, maybe_R):
+        return x, y, z
+    print(R)
+    return None, None, None
 
 
 def getMeanPosmap():
@@ -471,57 +548,73 @@ class FitGenerator:
     def workerOffset(self, indexes):
         # print(indexes)
         x = []
-        y0 = []
-        y1 = []
-        y2 = []
-        y3 = []
+        batch_posmap = []
+        batch_offset = []
+        batch_rotation = []
+        batch_translation = []
+        batch_scale = []
         for index in indexes:
             # print(index)
             if self.all_image_data[index].image is None:
                 image_path = self.all_image_data[index].cropped_image_path
                 image = io.imread(image_path)
-                # self.all_image_data[index].image = image.astype(np.uint8)
+                self.all_image_data[index].image = image.astype(np.uint8)
                 image = image / 255.
             else:
                 image = self.all_image_data[index].image / 255.
             image = augmentation.prnAugment(image)
 
-            if self.all_image_data[index].offset_posmap is None:
-                pos_path = self.all_image_data[index].cropped_posmap_path
-                pos = np.load(pos_path)
-                # self.all_image_data[index].posmap = pos.astype(np.float16)
+            pos_path = self.all_image_data[index].cropped_posmap_path
+            pos = np.load(pos_path)
+            # self.all_image_data[index].posmap = pos.astype(np.float16)
 
-                offset_path = self.all_image_data[index].offset_posmap_path
-                offset = np.load(offset_path)
-                # self.all_image_data[index].offset_posmap = offset
+            offset_path = self.all_image_data[index].offset_posmap_path
+            offset = np.load(offset_path)
+            # self.all_image_data[index].offset_posmap = offset
 
-                bbox_info_path = self.all_image_data[index].bbox_info_path
-                bbox_info = sio.loadmat(bbox_info_path)
-                # self.all_image_data[index].bbox_info = bbox_info
+            bbox_info_path = self.all_image_data[index].bbox_info_path
+            bbox_info = sio.loadmat(bbox_info_path)
+            # self.all_image_data[index].bbox_info = bbox_info
 
-            else:
-                pos = self.all_image_data[index].posmap
-                offset = self.all_image_data[index].offset_posmap
-                bbox_info = self.all_image_data[index].bbox_info
-
-            T = bbox_info['TformOffset']
+            trans_mat = bbox_info['TformOffset']
             # T_scale_1e4 = np.diagflat([1e4, 1e4, 1e4, 1])
             # pos = offset + mean_posmap
             # pos = np.concatenate((pos, uvmap_place_holder), axis=-1)
             # pos = pos.dot(T.dot(T_scale_1e4).T)
             # pos = pos[:, :, 0:3]
-            T = T * T_normalizer
-            R_flatten = np.reshape(T[0:3, 0:3], (9,))
-            T_flatten = np.reshape(T[0:3, 3], (3,))
+            trans_mat = trans_mat * T_normalizer
+            t0 = trans_mat[0:3, 0]
+            S = np.sqrt(np.sum(t0 * t0))
+
+            # R_flatten = np.reshape(trans_mat[0:3, 0:3] / S, (9,))
+            R = trans_mat[0:3, 0:3]
+            R = R.dot(np.diagflat([1 / S, -1 / S, 1 / S]))
+
+            # ss = np.repeat([[1 / S, -1 / S, 1 / S]], 3, 0)
+            # R=R*ss
+
+            R_flatten = estimateRotationAngle(R)
+            if R_flatten[0] is None:
+                print(pos_path)
+                continue
+            R_flatten = np.reshape((np.array(R_flatten)), (3,)) / np.pi
+            T_flatten = np.reshape(trans_mat[0:3, 3], (3,))
             pos = pos / 256.
+            S = S * 5e2
+
+            if S > 1:
+                print('too large scale', S)
+            if (T_flatten > 1).any():
+                print('too large T', T_flatten)
 
             x.append(image)
-            y0.append(pos)
-            y1.append(offset)
-            y2.append(R_flatten)
-            y3.append(T_flatten)
+            batch_posmap.append(pos)
+            batch_offset.append(offset)
+            batch_rotation.append(R_flatten)
+            batch_translation.append(T_flatten)
+            batch_scale.append(S)
 
-        return x, y0, y1, y2, y3
+        return x, batch_posmap, batch_offset, batch_rotation, batch_translation, batch_scale
 
     def genOffset(self, batch_size=64, gen_mode='random', do_shuffle=False, worker_num=4):
         while True:
@@ -530,6 +623,7 @@ class FitGenerator:
             y1 = []
             y2 = []
             y3 = []
+            y4 = []
             if gen_mode == 'random':
                 batch_num = batch_size
                 indexes = np.random.randint(len(self.all_image_data), size=batch_size)
@@ -563,15 +657,26 @@ class FitGenerator:
             for p in jobs:
                 p.join()
             for p in jobs:
-                [xx, yy0, yy1, yy2, yy3] = p.get_result()
+                [xx, yy0, yy1, yy2, yy3, yy4] = p.get_result()
                 x.extend(xx)
                 y0.extend(yy0)
                 y1.extend(yy1)
                 y2.extend(yy2)
                 y3.extend(yy3)
+                y4.extend(yy4)
             y0 = np.array(y0)
             y1 = np.array(y1)
             y2 = np.array(y2)
             y3 = np.array(y3)
+            y4 = np.array(y4)
             x = np.array(x)
-            yield x, [y0, y1, y2, y3]
+            yield x, [y0, y1, y2, y3, y4]
+
+# a = sio.loadmat('data/images/AFLW2000-crop-offset/image00002/image00002_bbox_info.mat')
+# t = a['TformOffset']
+# r = t[0:3, 0:3]
+# t1 = t[1, 0:3]
+# t2 = t[2, 0:3]
+# s = np.sqrt(np.sum(t1 * t1))
+# rn = r .dot( np.diagflat([1 / s, -1 / s, 1 / s]))
+# b = estimateRotationAngle(rn)

@@ -9,7 +9,6 @@ from keras.layers import add, Flatten, Multiply, Lambda, Concatenate
 from keras.initializers import glorot_uniform
 from keras.callbacks import ModelCheckpoint, Callback, History
 from keras.utils import multi_gpu_model
-from loss import getErrorFunction, getLossFunction
 import keras.backend as K
 from data import mean_posmap
 
@@ -206,6 +205,31 @@ def PRNResBlock(inpt, filters, kernel_size=4, strides=(1, 1), with_conv_shortcut
         return x
 
 
+def getRotateTensor(R_flatten):
+    x = R_flatten[:, 0:1]
+    y = R_flatten[:, 1:2]
+    z = R_flatten[:, 2:3]
+
+    rx1 = K.concatenate([x / x, x * 0, x * 0])
+    rx2 = K.concatenate([x * 0, K.cos(x), K.sin(x)])
+    rx3 = K.concatenate([x * 0, -K.sin(x), K.cos(x)])
+    rx = K.stack([rx1, rx2, rx3], axis=1)
+
+    ry1 = K.concatenate([K.cos(y), y * 0, -K.sin(y)])
+    ry2 = K.concatenate([y * 0, y / y, y * 0])
+    ry3 = K.concatenate([K.sin(y), y * 0, K.cos(y)])
+    ry = K.stack([ry1, ry2, ry3], axis=1)
+
+    rz1 = K.concatenate([K.cos(z), K.sin(z), z * 0])
+    rz2 = K.concatenate([-K.sin(z), K.cos(z), z * 0])
+    rz3 = K.concatenate([z * 0, z * 0, z / z])
+    rz = K.stack([rz1, rz2, rz3], axis=1)
+
+    r1 = Dot([2, 1])([rx, ry])
+    r2 = Dot([2, 1])([r1, rz])
+    return r2
+
+
 # RestorePositionFromOffset
 def RPFOModule(inpt):
     """
@@ -213,9 +237,15 @@ def RPFOModule(inpt):
         T: 12*1
         :return: posmap: 256*256*3
     """
-    [offset, R, T] = inpt
+    [offset, R, T, S] = inpt
+    R = R * np.pi
+    Sn = -S
+    s = K.concatenate([S, Sn, S])
+    s = K.repeat(s, 3)
 
-    r = Reshape((3, 3))(R * 10.)
+    r = getRotateTensor(R)
+    # 1e-4*5e2    *20=1
+    r = r * s * 20.
     t = T * 256.
     pos = offset + mean_posmap_tensor
     pos = Reshape((65536, 3))(pos)
@@ -235,3 +265,23 @@ def RPFOModule(inpt):
     #     t = T[i] * 256.
     #     pos = K.dot((offset[i] + mean_posmap_tensor), K.transpose(r))
     #     pos = pos + t
+
+
+def DecoderModule(x, feature_size=16):
+    x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 32, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 8 8 512
+    x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 16, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 16 16 256
+    x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 16, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 16 16 256
+    x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 16, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 16 16 256
+    x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 8, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 32 32 128
+    x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 8, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 32 32 128
+    x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 8, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 32 32 128
+    x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 4, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 64 64 64
+    x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 4, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 64 64 64
+    x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 4, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 64 64 64
+    x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 2, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 128 128 32
+    x = Conv2d_Transpose_BN_AC(x, filters=feature_size * 2, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 128 128 32
+    x = Conv2d_Transpose_BN_AC(x, filters=feature_size, kernel_size=4, strides=(2, 2), activation='relu', padding='same')  # 256 256 16
+    x = Conv2d_Transpose_BN_AC(x, filters=feature_size, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 256 256 16
+    x = Conv2d_Transpose_BN_AC(x, filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 256 256 3
+    x = Conv2d_Transpose_BN_AC(x, filters=3, kernel_size=4, strides=(1, 1), activation='relu', padding='same')  # 256 256 3
+    return x
