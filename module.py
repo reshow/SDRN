@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 from keras.models import Model
 from keras.layers import Input, Dense, Dropout, BatchNormalization, Conv2D, MaxPooling2D, AveragePooling2D, concatenate, \
-    Activation, ZeroPadding2D, Conv2DTranspose, regularizers
+    Activation, ZeroPadding2D, Conv2DTranspose, regularizers, Dot, Permute
 from keras.layers import Add, GlobalMaxPooling2D, GlobalAveragePooling2D, Reshape, Permute, multiply
 from keras.layers import add, Flatten, Multiply, Lambda, Concatenate
 from keras.initializers import glorot_uniform
@@ -11,6 +11,10 @@ from keras.callbacks import ModelCheckpoint, Callback, History
 from keras.utils import multi_gpu_model
 from loss import getErrorFunction, getLossFunction
 import keras.backend as K
+from data import mean_posmap
+
+# global variable
+mean_posmap_tensor = K.variable(mean_posmap)
 
 
 def Conv2d_AC_BN(x, filters, kernel_size, strides=(1, 1), padding='same'):
@@ -26,10 +30,13 @@ def Conv2d_BN_AC(x, filters, kernel_size, strides=(1, 1), padding='same'):
     return x
 
 
-def Conv2d_Transpose_BN_AC(x, filters, kernel_size, strides=(1, 1), padding='same', activation='relu'):
+def Conv2d_Transpose_BN_AC(x, filters, kernel_size, strides=(1, 1), padding='same', activation='relu', name=None):
     x = Conv2DTranspose(filters=filters, kernel_size=kernel_size, strides=strides, padding=padding, kernel_regularizer=regularizers.l2(0.0002))(x)
     x = BatchNormalization()(x)
-    x = Activation(activation)(x)
+    if name is None:
+        x = Activation(activation)(x)
+    else:
+        x = Activation(activation, name=name)(x)
     return x
 
 
@@ -182,12 +189,12 @@ def CbamResBlock(inpt, nb_filter, kernel_size, strides=(1, 1), with_conv_shortcu
         return x
 
 
-def PRNResBlock(inpt, nb_filter, kernel_size=4, strides=(1, 1), with_conv_shortcut=False):
-    x = Conv2d_BN_AC(inpt, int(nb_filter / 2), kernel_size=1, strides=(1, 1), padding='same')
-    x = Conv2d_BN_AC(x, int(nb_filter / 2), kernel_size=kernel_size, strides=strides, padding='same')
-    x = Conv2D(nb_filter, kernel_size=1, strides=(1, 1), padding='same')(x)
+def PRNResBlock(inpt, filters, kernel_size=4, strides=(1, 1), with_conv_shortcut=False):
+    x = Conv2d_BN_AC(inpt, int(filters / 2), kernel_size=1, strides=(1, 1), padding='same')
+    x = Conv2d_BN_AC(x, int(filters / 2), kernel_size=kernel_size, strides=strides, padding='same')
+    x = Conv2D(filters, kernel_size=1, strides=(1, 1), padding='same')(x)
     if with_conv_shortcut:
-        shortcut = Conv2D(nb_filter, strides=strides, kernel_size=1)(inpt)
+        shortcut = Conv2D(filters, strides=strides, kernel_size=1)(inpt)
         x = add([x, shortcut])
         x = BatchNormalization()(x)
         x = Activation('relu')(x)
@@ -197,3 +204,34 @@ def PRNResBlock(inpt, nb_filter, kernel_size=4, strides=(1, 1), with_conv_shortc
         x = BatchNormalization()(x)
         x = Activation('relu')(x)
         return x
+
+
+# RestorePositionFromOffset
+def RPFOModule(inpt):
+    """
+        offset: 256*256*3
+        T: 12*1
+        :return: posmap: 256*256*3
+    """
+    [offset, R, T] = inpt
+
+    r = Reshape((3, 3))(R * 10.)
+    t = T * 256.
+    pos = offset + mean_posmap_tensor
+    pos = Reshape((65536, 3))(pos)
+    tk1 = K.repeat(t, 65536)
+
+    pos = Dot(2)([pos, r])
+    pos = pos + tk1
+    pos = Reshape((256, 256, 3))(pos)
+    pos = pos / 256.
+
+    return pos
+
+    # batch_size = T.shape[0]
+    # outpt = []
+    # for i in range(batch_size):
+    #     r = K.reshape(R[i] * 10., (3, 3))
+    #     t = T[i] * 256.
+    #     pos = K.dot((offset[i] + mean_posmap_tensor), K.transpose(r))
+    #     pos = pos + t

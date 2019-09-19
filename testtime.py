@@ -82,16 +82,18 @@ class FitGenerator:
         return x, y
 
     def worker(self, indexes):
-        print(indexes)
+        # print(indexes)
         x = []
         y = []
         for index in indexes:
             # print(index)
             image_path = self.all_image_data[index].cropped_image_path
+            # image_path='data/images/AFLW2000-crop-offset/image00002/image00002_cropped.jpg'
             image = io.imread(image_path) / 255.
             # image = transform.resize(image, (self.image_height, self.image_width, self.image_channel))
-            image = unchangeAugment(image)
+            # image = unchangeAugment(image)
             pos_path = self.all_image_data[index].cropped_posmap_path
+            # pos_path='data/images/AFLW2000-crop-offset/image00002/image00002_cropped_uv_posmap.npy'
             pos = np.load(pos_path)
             pos = pos / 256.
             x.append(image)
@@ -142,16 +144,14 @@ class FitGenerator:
         #     y.extend(yy)
         jobs = []
         for i in range(worker_num):
-            print(st_idx[i], ed_idx[i])
+            # print(st_idx[i], ed_idx[i])
             idx = np.array(indexes[st_idx[i]:ed_idx[i]])
             p = MyThread(func=self.worker, args=(idx,))
             jobs.append(p)
         for p in jobs:
             p.start()
-        print('xxx')
         for p in jobs:
             p.join()
-        print('xxxxx')
         for p in jobs:
             [xx, yy] = p.get_result()
             x.extend(xx)

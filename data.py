@@ -20,7 +20,6 @@ import augmentation
 from math import cos, sin
 import random
 import threading
-import psutil
 
 #  global data
 bfm = MorphabelModel('data/Out/BFM.mat')
@@ -29,6 +28,7 @@ default_cropped_image_shape = np.array([256, 256, 3])
 default_uvmap_shape = np.array([256, 256, 3])
 face_mask_np = io.imread('uv-data/uv_face_mask.png') / 255.
 face_mask_mean_fix_rate = (256 * 256) / np.sum(face_mask_np)
+mean_posmap = np.load('uv-data/mean_uv_posmap.npy')
 
 
 def process_uv(uv_coordinates):
@@ -55,10 +55,20 @@ def readUVKpt(uv_kpt_path):
     return uv_kpt
 
 
+def getTNormalizer():
+    T_norm = np.zeros((4, 4))
+    T_norm[0:3, 0:3] = 1e3
+    T_norm[0:3, 3] = 1 / 256.
+    T_norm[3, 3] = 1.
+    return T_norm.astype(np.float32)
+
+
 #  global data
 uv_coords = faceutil.morphable_model.load.load_uv_coords('data/Out/BFM_UV.mat')
 uv_coords = process_uv(uv_coords)
 uv_kpt = readUVKpt('uv-data/uv_kpt_ind.txt')
+uvmap_place_holder = np.ones((256, 256, 1))
+T_normalizer = getTNormalizer()
 
 
 def getLandmark(ipt):
@@ -283,6 +293,13 @@ def getTransformMatrix(s, angles, t, height):
     return T.astype(np.float32)
 
 
+def getMeanPosmap():
+    mean_position = bfm.get_mean_shape() * 1e-4
+    mean_uv_position_map = mesh.render.render_colors(uv_coords, bfm.full_triangles, mean_position, 256, 256, 3)
+    np.save('uv-data/mean_uv_posmap.npy', mean_uv_position_map.astype(np.float32))
+    return mean_uv_position_map
+
+
 class ImageData:
     def __init__(self):
         self.cropped_image_path = ''
@@ -292,9 +309,12 @@ class ImageData:
         self.texture_path = ''
         self.texture_image_path = ''
         self.bbox_info_path = ''
+        self.offset_posmap_path = ''
 
         self.image = None
         self.posmap = None
+        self.offset_posmap = None
+        self.bbox_info = None
 
     def readPath(self, image_dir):
         image_name = image_dir.split('/')[-1]
@@ -307,6 +327,7 @@ class ImageData:
         self.texture_image_path = image_dir + '/' + image_name + '_uv_texture_map.jpg'
 
         self.bbox_info_path = image_dir + '/' + image_name + '_bbox_info.mat'
+        self.offset_posmap_path = image_dir + '/' + image_name + '_offset_posmap.npy'
         # TODO:read bbox and tform
 
 
@@ -446,3 +467,111 @@ class FitGenerator:
             x = np.array(x)
             y = np.array(y)
             yield x, y
+
+    def workerOffset(self, indexes):
+        # print(indexes)
+        x = []
+        y0 = []
+        y1 = []
+        y2 = []
+        y3 = []
+        for index in indexes:
+            # print(index)
+            if self.all_image_data[index].image is None:
+                image_path = self.all_image_data[index].cropped_image_path
+                image = io.imread(image_path)
+                # self.all_image_data[index].image = image.astype(np.uint8)
+                image = image / 255.
+            else:
+                image = self.all_image_data[index].image / 255.
+            image = augmentation.prnAugment(image)
+
+            if self.all_image_data[index].offset_posmap is None:
+                pos_path = self.all_image_data[index].cropped_posmap_path
+                pos = np.load(pos_path)
+                # self.all_image_data[index].posmap = pos.astype(np.float16)
+
+                offset_path = self.all_image_data[index].offset_posmap_path
+                offset = np.load(offset_path)
+                # self.all_image_data[index].offset_posmap = offset
+
+                bbox_info_path = self.all_image_data[index].bbox_info_path
+                bbox_info = sio.loadmat(bbox_info_path)
+                # self.all_image_data[index].bbox_info = bbox_info
+
+            else:
+                pos = self.all_image_data[index].posmap
+                offset = self.all_image_data[index].offset_posmap
+                bbox_info = self.all_image_data[index].bbox_info
+
+            T = bbox_info['TformOffset']
+            # T_scale_1e4 = np.diagflat([1e4, 1e4, 1e4, 1])
+            # pos = offset + mean_posmap
+            # pos = np.concatenate((pos, uvmap_place_holder), axis=-1)
+            # pos = pos.dot(T.dot(T_scale_1e4).T)
+            # pos = pos[:, :, 0:3]
+            T = T * T_normalizer
+            R_flatten = np.reshape(T[0:3, 0:3], (9,))
+            T_flatten = np.reshape(T[0:3, 3], (3,))
+            pos = pos / 256.
+
+            x.append(image)
+            y0.append(pos)
+            y1.append(offset)
+            y2.append(R_flatten)
+            y3.append(T_flatten)
+
+        return x, y0, y1, y2, y3
+
+    def genOffset(self, batch_size=64, gen_mode='random', do_shuffle=False, worker_num=4):
+        while True:
+            x = []
+            y0 = []
+            y1 = []
+            y2 = []
+            y3 = []
+            if gen_mode == 'random':
+                batch_num = batch_size
+                indexes = np.random.randint(len(self.all_image_data), size=batch_size)
+            elif gen_mode == 'order':
+                if (self.next_index == 0) & do_shuffle:
+                    random.shuffle(self.all_image_data)
+                if batch_size > len(self.all_image_data):
+                    batch_size = len(self.all_image_data)
+                batch_num = batch_size
+                if self.next_index + batch_size >= len(self.all_image_data):
+                    batch_num = len(self.all_image_data) - self.next_index
+                indexes = np.array(range(self.next_index, self.next_index + batch_num))
+                # print(self.next_index,self.next_index+batch_num)
+                self.next_index = (self.next_index + batch_num) % len(self.all_image_data)
+            else:
+                indexes = None
+                batch_num = 0
+                print('unknown generate mode')
+
+            task_per_worker = math.ceil(batch_num / worker_num)
+            st_idx = [task_per_worker * i for i in range(worker_num)]
+            ed_idx = [min(batch_num, task_per_worker * (i + 1)) for i in range(worker_num)]
+
+            jobs = []
+            for i in range(worker_num):
+                idx = np.array(indexes[st_idx[i]:ed_idx[i]])
+                p = MyThread(func=self.workerOffset, args=(idx,))
+                jobs.append(p)
+            for p in jobs:
+                p.start()
+            for p in jobs:
+                p.join()
+            for p in jobs:
+                [xx, yy0, yy1, yy2, yy3] = p.get_result()
+                x.extend(xx)
+                y0.extend(yy0)
+                y1.extend(yy1)
+                y2.extend(yy2)
+                y3.extend(yy3)
+            y0 = np.array(y0)
+            y1 = np.array(y1)
+            y2 = np.array(y2)
+            y3 = np.array(y3)
+            x = np.array(x)
+            yield x, [y0, y1, y2, y3]

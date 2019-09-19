@@ -50,6 +50,22 @@ class NetworkManager:
         self.error_function = args.errorFunction
 
         self.net = RZYNet(gpu_num=args.gpu, loss_function=args.lossFunction)  # class of RZYNet
+        # if true, provide [pos offset R T] as groundtruth. Otherwise ,provide pos as GT
+        self.is_offset_data = False
+
+    def buildModel(self, args):
+        print('bulding',args.netStructure)
+        if args.netStructure == 'PRNet':
+            net_manager.net.buildPRNet()
+        elif args.netStructure == 'CbamPRNet':
+            net_manager.net.buildCbamPRNet()
+        elif args.netStructure == 'InitPRNet':
+            net_manager.net.buildInitPRNet()
+        elif args.netStructure == 'OffsetPRNet':
+            self.is_offset_data = True
+            net_manager.net.buildOffsetPRNet()
+        else:
+            print('unknown network structure')
 
     def addImageData(self, data_dir, add_mode='train', split_rate=0.8):
         all_data = []
@@ -79,9 +95,13 @@ class NetworkManager:
                                                verbose=1,
                                                save_best_only=True, save_weights_only=True)
         train_gen = FitGenerator(self.train_data)
-        train_gen_func = train_gen.genPRN(batch_size=self.batch_size * self.gpu_num, gen_mode='random')
         val_gen = FitGenerator(self.val_data)
-        val_gen_func = val_gen.gen(batch_size=self.batch_size * self.gpu_num, gen_mode='order')
+        if self.is_offset_data:
+            train_gen_func = train_gen.genOffset(batch_size=self.batch_size * self.gpu_num, gen_mode='random')
+            val_gen_func = val_gen.genOffset(batch_size=self.batch_size * self.gpu_num, gen_mode='order')
+        else:
+            train_gen_func = train_gen.genPRN(batch_size=self.batch_size * self.gpu_num, gen_mode='random')
+            val_gen_func = val_gen.genPRN(batch_size=self.batch_size * self.gpu_num, gen_mode='order')
 
         now_time = time.localtime()
         tensorboard_dir = 'tmp' + '/' + str(now_time.tm_year) + '-' + str(now_time.tm_mon) + '-' + str(now_time.tm_mday) + '-' \
@@ -230,6 +250,9 @@ if __name__ == '__main__':
     parser.add_argument('--visibleDevice', default='0', type=str,
                         help='')
 
+    parser.add_argument('-struct', '--netStructure', default='InitPRNet', type=str,
+                        help='')
+
     run_args = parser.parse_args()
 
     print(run_args)
@@ -237,10 +260,7 @@ if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = run_args.visibleDevice
 
     net_manager = NetworkManager(run_args)
-    # net_manager.net.buildPRNet()
-    # net_manager.net.buildAttentionPRNet()
-    # net_manager.net.buildCbamPRNet()
-    net_manager.net.buildInitPRNet()
+    net_manager.buildModel(run_args)
     if run_args.isTrain:
 
         if run_args.valDataDir is not None:

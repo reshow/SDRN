@@ -30,11 +30,12 @@ weight_mask = K.variable(weight_mask)
 face_mask = K.variable(face_mask_np)
 
 
-def PRNLoss(is_foreface=False, is_weighted=False):
+def PRNLoss(is_foreface=False, is_weighted=False, rate=1.0):
     """
     here is a tricky way to customize loss functions for keras
     :param is_foreface:
     :param is_weighted:
+    :param rate:
     :return: loss function in keras format
     """
 
@@ -45,25 +46,25 @@ def PRNLoss(is_foreface=False, is_weighted=False):
         if is_foreface:
             dist = dist * face_mask * face_mask_mean_fix_rate
         loss = K.mean(dist)
-        return loss
+        return loss * rate
 
     return templateLoss
 
 
-def getLossFunction(loss_func_name='SquareError'):
+def getLossFunction(loss_func_name='SquareError', rate=1.0):
     if loss_func_name == 'RootSquareError' or loss_func_name == 'rse':
-        return PRNLoss(is_foreface=False, is_weighted=False)
+        return PRNLoss(is_foreface=False, is_weighted=False, rate=rate)
     elif loss_func_name == 'WeightedRootSquareError' or loss_func_name == 'wrse':
-        return PRNLoss(is_foreface=False, is_weighted=True)
+        return PRNLoss(is_foreface=False, is_weighted=True, rate=rate)
     elif loss_func_name == 'ForefaceRootSquareError' or loss_func_name == 'frse':
-        return PRNLoss(is_foreface=True, is_weighted=False)
+        return PRNLoss(is_foreface=True, is_weighted=False, rate=rate)
     elif loss_func_name == 'ForefaceWeightedRootSquareError' or loss_func_name == 'fwrse':
-        return PRNLoss(is_foreface=True, is_weighted=True)
+        return PRNLoss(is_foreface=True, is_weighted=True, rate=rate)
     else:
         print('unknown loss:', loss_func_name)
 
 
-def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=False, is_gt_landmark=False):
+def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=False, is_gt_landmark=False, rate=1.0):
     def templateError(y_true, y_pred, bbox=None, landmarks=None):
         assert (not (is_foreface and is_landmark))
         if is_landmark:
@@ -100,25 +101,25 @@ def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=Fals
         else:
             bbox_size = 1.
         loss = np.mean(dist / bbox_size)
-        return loss
+        return loss * rate
 
     return templateError
 
 
-def getErrorFunction(error_func_name='NME'):
+def getErrorFunction(error_func_name='NME', rate=1.0):
     if error_func_name == 'nme2d' or error_func_name == 'normalized mean error2d':
-        return PRNError(is_2d=True, is_normalized=True, is_foreface=True)
+        return PRNError(is_2d=True, is_normalized=True, is_foreface=True, rate=rate)
     elif error_func_name == 'nme3d' or error_func_name == 'normalized mean error3d':
-        return PRNError(is_2d=False, is_normalized=True, is_foreface=True)
+        return PRNError(is_2d=False, is_normalized=True, is_foreface=True, rate=rate)
     elif error_func_name == 'landmark2d' or error_func_name == 'normalized mean error3d':
-        return PRNError(is_2d=True, is_normalized=True, is_foreface=False, is_landmark=True)
+        return PRNError(is_2d=True, is_normalized=True, is_foreface=False, is_landmark=True, rate=rate)
     elif error_func_name == 'landmark3d' or error_func_name == 'normalized mean error3d':
-        return PRNError(is_2d=False, is_normalized=True, is_foreface=False, is_landmark=True)
+        return PRNError(is_2d=False, is_normalized=True, is_foreface=False, is_landmark=True, rate=rate)
     elif error_func_name == 'gtlandmark2d' or error_func_name == 'normalized mean error3d':
         return PRNError(is_2d=True, is_normalized=True, is_foreface=False, is_landmark=True,
-                        is_gt_landmark=True)
+                        is_gt_landmark=True, rate=rate)
     elif error_func_name == 'gtlandmark3d' or error_func_name == 'normalized mean error3d':
         return PRNError(is_2d=False, is_normalized=True, is_foreface=False, is_landmark=True,
-                        is_gt_landmark=True)
+                        is_gt_landmark=True, rate=rate)
     else:
         print('unknown error:', error_func_name)
