@@ -18,6 +18,7 @@ from loss import getErrorFunction
 from data import ImageData, FitGenerator, getLandmark
 from visualize import show, showMesh, showImage, showLandmark, showLandmark2
 from loss import face_mask_np
+import pickle
 
 
 class ParallelModelCheckpoint(ModelCheckpoint):
@@ -91,6 +92,26 @@ class NetworkManager:
             self.val_data.extend(all_data[num_train:])
         elif add_mode == 'test':
             self.test_data.extend(all_data)
+
+    def saveImageDataPaths(self, save_folder='data'):
+        print('saving data path list')
+        ft = open(save_folder + '/' + 'train_data.pkl', 'wb')
+        fv = open(save_folder + '/' + 'val_data.pkl', 'wb')
+        pickle.dump(self.train_data, ft)
+        pickle.dump(self.val_data, fv)
+        ft.close()
+        fv.close()
+        print('data path list saved')
+
+    def loadImageDataPaths(self, load_folder='data'):
+        print('loading data path list')
+        ft = open(load_folder + '/' + 'train_data.pkl', 'rb')
+        fv = open(load_folder + '/' + 'val_data.pkl', 'rb')
+        self.train_data = pickle.load(ft)
+        self.val_data = pickle.load(fv)
+        ft.close()
+        fv.close()
+        print('data path list loaded')
 
     def train(self):
         checkpointer = ParallelModelCheckpoint(self.net.model, filepath=self.model_save_path, monitor='loss',
@@ -270,15 +291,19 @@ if __name__ == '__main__':
     net_manager = NetworkManager(run_args)
     net_manager.buildModel(run_args)
     if run_args.isTrain:
-
-        if run_args.valDataDir is not None:
-            for dir in run_args.trainDataDir:
-                net_manager.addImageData(dir, 'train')
-            for dir in run_args.valDataDir:
-                net_manager.addImageData(dir, 'val')
+        if run_args.trainDataDir is not None:
+            if run_args.valDataDir is not None:
+                for dir in run_args.trainDataDir:
+                    net_manager.addImageData(dir, 'train')
+                for dir in run_args.valDataDir:
+                    net_manager.addImageData(dir, 'val')
+            else:
+                for dir in run_args.trainDataDir:
+                    net_manager.addImageData(dir, 'both')
+            net_manager.saveImageDataPaths()
         else:
-            for dir in run_args.trainDataDir:
-                net_manager.addImageData(dir, 'both')
+            net_manager.loadImageDataPaths()
+
         if run_args.loadModelPath is not None:
             net_manager.net.loadWeights(run_args.loadModelPath)
         net_manager.train()

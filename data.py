@@ -536,17 +536,20 @@ class FitGenerator:
                 image = self.all_image_data[index].image / 255.
             image = augmentation.prnAugment(image)
 
-            pos_path = self.all_image_data[index].cropped_posmap_path
-            pos = np.load(pos_path)
-            # self.all_image_data[index].posmap = pos.astype(np.float16)
+            if self.all_image_data[index].posmap is None:
+                pos_path = self.all_image_data[index].cropped_posmap_path
+                pos = np.load(pos_path)
+                self.all_image_data[index].posmap = pos.astype(np.float16)
+                bbox_info_path = self.all_image_data[index].bbox_info_path
+                bbox_info = sio.loadmat(bbox_info_path)
+                self.all_image_data[index].bbox_info = bbox_info
+            else:
+                pos = self.all_image_data[index].posmap.astype(np.float32)
+                bbox_info = self.all_image_data[index].bbox_info
 
             offset_path = self.all_image_data[index].offset_posmap_path
             offset = np.load(offset_path)
             # self.all_image_data[index].offset_posmap = offset
-
-            bbox_info_path = self.all_image_data[index].bbox_info_path
-            bbox_info = sio.loadmat(bbox_info_path)
-            # self.all_image_data[index].bbox_info = bbox_info
 
             trans_mat = bbox_info['TformOffset']
             # T_scale_1e4 = np.diagflat([1e4, 1e4, 1e4, 1])
@@ -588,7 +591,7 @@ class FitGenerator:
 
         return x, batch_posmap, batch_offset, batch_rotation, batch_translation, batch_scale
 
-    def genOffset(self, batch_size=64, gen_mode='random', do_shuffle=False, worker_num=4):
+    def genOffset(self, batch_size=64, gen_mode='random', do_shuffle=False, worker_num=8):
         while True:
             x = []
             y0 = []
@@ -643,7 +646,6 @@ class FitGenerator:
             y4 = np.array(y4)
             x = np.array(x)
             yield x, [y0, y1, y2, y3, y4]
-
 
 # R = np.array(([[0.07080083, -0.98242772, -0.17269392],
 #                [0.99748969, 0.06951786, 0.01347424],
