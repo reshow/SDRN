@@ -7,14 +7,13 @@ from data import ImageData
 import os
 import random
 import multiprocessing
-from augmentation import unchangeAugment
+from augmentation import unchangeAugment, prnAugment
 import threading
 
 train_data = []
 
 
 class MyThread(threading.Thread):
-
     def __init__(self, func, args=()):
         super(MyThread, self).__init__()
         self.func = func
@@ -25,7 +24,7 @@ class MyThread(threading.Thread):
 
     def get_result(self):
         try:
-            return self.result  # 如果子线程不使用join方法，此处可能会报没有self.result的错误
+            return self.result
         except Exception:
             return None
 
@@ -37,15 +36,11 @@ class FitGenerator:
         self.image_height = 256
         self.image_width = 256
         self.image_channel = 3
+        self.read_img = False
+        self.read_posmap = False
+        self.augment = False
 
     def get(self, batch_size=64, gen_mode='random'):
-        """
-
-        :param batch_size:
-        :param gen_mode: random or order
-        :return:
-        """
-
         x = []
         y = []
         if gen_mode == 'random':
@@ -87,20 +82,23 @@ class FitGenerator:
         y = []
         for index in indexes:
             # print(index)
-            image_path = self.all_image_data[index].cropped_image_path
-            # image_path='data/images/AFLW2000-crop-offset/image00002/image00002_cropped.jpg'
-            image = io.imread(image_path) / 255.
-            # image = transform.resize(image, (self.image_height, self.image_width, self.image_channel))
-            # image = unchangeAugment(image)
-            pos_path = self.all_image_data[index].cropped_posmap_path
-            # pos_path='data/images/AFLW2000-crop-offset/image00002/image00002_cropped_uv_posmap.npy'
-            pos = np.load(pos_path)
-            pos = pos / 256.
-            x.append(image)
-            y.append(pos)
-
-            if np.max(pos[:, :, 2]) > 1:
-                print(np.max(pos[:, :, 2]))
+            if self.read_img:
+                image_path = self.all_image_data[index].cropped_image_path
+                # image_path='data/images/AFLW2000-crop-offset/image00002/image00002_cropped.jpg'
+                image = io.imread(image_path) / 255.
+                # image = transform.resize(image, (self.image_height, self.image_width, self.image_channel))
+                # image = unchangeAugment(image)
+                if self.augment:
+                    image = prnAugment(image)
+                x.append(image)
+            if self.read_posmap:
+                pos_path = self.all_image_data[index].cropped_posmap_path
+                # pos_path='data/images/AFLW2000-crop-offset/image00002/image00002_cropped_uv_posmap.npy'
+                pos = np.load(pos_path)
+                pos = pos / 256.
+                y.append(pos)
+                # if np.max(pos[:, :, 2]) > 1:
+                #     print(np.max(pos[:, :, 2]))
         print('finish')
         return x, y
 
@@ -126,11 +124,9 @@ class FitGenerator:
             indexes = None
             batch_num = 0
             print('unknown generate mode')
-
         task_per_worker = math.ceil(batch_num / worker_num)
         st_idx = [task_per_worker * i for i in range(worker_num)]
         ed_idx = [min(batch_num, task_per_worker * (i + 1)) for i in range(worker_num)]
-
         # q = multiprocessing.Queue()
         # jobs = []
         # for i in range(worker_num):
@@ -159,7 +155,6 @@ class FitGenerator:
             [xx, yy] = p.get_result()
             x.extend(xx)
             y.extend(yy)
-
         x = np.array(x)
         y = np.array(y)
         return x, y
@@ -176,15 +171,17 @@ def addImageData(data_dir):
             temp_image_data = ImageData()
             temp_image_data.readPath(root + '/' + dir_name)
             all_data.append(temp_image_data)
-
     train_data.extend(all_data)
 
 
 if __name__ == '__main__':
     addImageData('data/images/AFLW2000-crop')
     fg = FitGenerator(train_data)
+    fg.read_img = True
+    fg.augment = True
+    fg.read_posmap=True
     t1 = time.clock()
-    for _ in range(10):
+    for _ in range(30):
         fg.multiget(64, 'order')
     t2 = time.clock()
     t = t2 - t1

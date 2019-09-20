@@ -24,7 +24,7 @@
         baseline,后者没什么用
      
 ####Todo:
-    0.metrics计算方式存疑,联系作者
+    0.metrics计算方式存疑,联系作者,拿他的model跑出来和我复现的差不多,是不是可以不管这个问题了?
     1.训练offset网络
     2.写一个pytorch版本,主要作用是通过require_grad控制param_regressor的梯度不影响encoder
       decoder

@@ -65,7 +65,7 @@ class RZYNet:
             para_model.summary()
             self.paral_model = para_model
         else:
-            model.compile(loss={'Posmap': getLossFunction(self.loss_function, rate=0), 'Offset': getLossFunction(self.loss_function, rate=5),
+            model.compile(loss={'Posmap': getLossFunction(self.loss_function, rate=0.1), 'Offset': getLossFunction(self.loss_function, rate=10),
                                 'ParamR': getLossFunction('mae', rate=1), 'ParamT': getLossFunction('mae', rate=1), 'ParamS': getLossFunction('mae', rate=1)},
                           optimizer=self.optimizer,
                           metrics={'Posmap': getLossFunction('frse'), 'Offset': getLossFunction('frse'),
@@ -207,7 +207,7 @@ class RZYNet:
         s = Dense(1, activation='sigmoid', name='ParamS')(d)
 
         x = DecoderModule(fs, feature_size=feature_size)  # 256 256 3
-        offset = Conv2d_Transpose_BN_AC(x, filters=3, kernel_size=4, strides=(1, 1), activation='sigmoid', padding='same', name='Offset')  # 256 256 3
+        offset = Conv2d_Transpose_BN_AC(x, filters=3, kernel_size=4, strides=(1, 1), activation='tanh', padding='same', name='Offset')  # 256 256 3
 
         pos = Lambda(RPFOModule, output_shape=(256, 256, 3), name='Posmap')([offset, r, t, s])
         # keras.layers.core.Lambda(function, output_shape=None, mask=None, arguments=None)
