@@ -464,12 +464,9 @@ class FitGenerator:
                 image = self.all_image_data[index].image / 255.
             image = augmentation.prnAugment(image)
 
-            if self.all_image_data[index].posmap is None:
-                pos_path = self.all_image_data[index].cropped_posmap_path
-                pos = np.load(pos_path)
-                self.all_image_data[index].posmap = pos.astype(np.float16)
-            else:
-                pos = self.all_image_data[index].posmap
+            pos_path = self.all_image_data[index].cropped_posmap_path
+            pos = np.load(pos_path)
+
             pos = pos / 256.
             x.append(image)
             y.append(pos)
@@ -648,7 +645,7 @@ class FitGenerator:
             yield x, [y0, y1, y2, y3, y4]
 
 
-R = np.array(([[0.07080083, -0.98242772, -0.17269392],
-               [0.99748969, 0.06951786, 0.01347424],
-               [0.00123216, 0.17321438, -0.98488337]]))
-estimateRotationAngle(R)
+# R = np.array(([[0.07080083, -0.98242772, -0.17269392],
+#                [0.99748969, 0.06951786, 0.01347424],
+#                [0.00123216, 0.17321438, -0.98488337]]))
+# estimateRotationAngle(R)
