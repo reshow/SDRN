@@ -21,3 +21,6 @@
 
 
 $NME_{3Dlandmark}=\frac{1}{N}\sum_{i=0}^{67}(\frac{\|x_{i}-y_{i}\|}{d})$
+
+
+

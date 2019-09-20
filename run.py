@@ -79,6 +79,7 @@ class NetworkManager:
                 temp_image_data = ImageData()
                 temp_image_data.readPath(root + '/' + dir_name)
                 all_data.append(temp_image_data)
+        print(len(all_data), 'data added')
 
         if add_mode == 'train':
             self.train_data.extend(all_data)

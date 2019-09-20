@@ -20,7 +20,7 @@ import augmentation
 from math import cos, sin
 import random
 import threading
-from math import sin, cos, asin, acos, atan
+from math import sin, cos, asin, acos, atan, atan2
 
 #  global data
 bfm = MorphabelModel('data/Out/BFM.mat')
@@ -320,53 +320,28 @@ def isMatSame(r1, r2, thresh=1e-1):
         return False
 
 
-def estimateRotationAngle(R):
-    y = asin(-R[0, 2])
-    cosx = R[2, 2] / cos(y)
-    sinx = R[1, 2] / cos(y)
-    cosz = R[0, 0] / cos(y)
-    sinz = R[0, 1] / cos(y)
-    if cosx >= 0:
-        x = asin(sinx)
-    elif sinx >= 0 and cosx < 0:
-        x = acos(cosx)
-    else:
-        x = -acos(cosx)
+def estimateRotationAngle(rot_mat):
+    sy = np.sqrt(rot_mat[0, 0] * rot_mat[0, 0] + rot_mat[0, 1] * rot_mat[0, 1])
 
-    if cosz >= 0:
-        z = asin(sinz)
-    elif sinz >= 0 and cosz < 0:
-        z = acos(cosz)
+    if sy > 1e-6:
+        # not singular
+        x = atan2(rot_mat[1, 2], rot_mat[2, 2])
+        y = atan2(-rot_mat[0, 2], sy)
+        z = atan2(rot_mat[0, 1], rot_mat[0, 0])
     else:
-        z = -acos(cosz)
+        x = atan2(-rot_mat[1, 2], rot_mat[2, 2])
+        y = atan2(-rot_mat[0, 2], sy)
+        z = 0
+    if rot_mat[1, 0] > 1 - 1e-2:
+        x = 0
+        y = atan2(-rot_mat[0, 2], sy)
+        z = atan2(rot_mat[0, 1], rot_mat[0, 0])
 
     maybe_R = getRotationMatrixFromAxisAngle(x, y, z)
-    if isMatSame(R, maybe_R):
+    if isMatSame(rot_mat, maybe_R):
         return x, y, z
 
-    y = np.pi - asin(-R[0, 2])
-    cosx = R[2, 2] / cos(y)
-    sinx = R[1, 2] / cos(y)
-    cosz = R[0, 0] / cos(y)
-    sinz = R[0, 1] / cos(y)
-    if cosx >= 0:
-        x = asin(sinx)
-    elif sinx >= 0 and cosx < 0:
-        x = acos(cosx)
-    else:
-        x = -acos(cosx)
-
-    if cosz >= 0:
-        z = asin(sinz)
-    elif sinz >= 0 and cosz < 0:
-        z = acos(cosz)
-    else:
-        z = -acos(cosz)
-
-    maybe_R = getRotationMatrixFromAxisAngle(x, y, z)
-    if isMatSame(R, maybe_R):
-        return x, y, z
-    print(R)
+    # print(R)
     return None, None, None
 
 
@@ -595,7 +570,7 @@ class FitGenerator:
 
             R_flatten = estimateRotationAngle(R)
             if R_flatten[0] is None:
-                print(pos_path)
+                # print(pos_path)
                 continue
             R_flatten = np.reshape((np.array(R_flatten)), (3,)) / np.pi
             T_flatten = np.reshape(trans_mat[0:3, 3], (3,))
@@ -672,11 +647,8 @@ class FitGenerator:
             x = np.array(x)
             yield x, [y0, y1, y2, y3, y4]
 
-# a = sio.loadmat('data/images/AFLW2000-crop-offset/image00002/image00002_bbox_info.mat')
-# t = a['TformOffset']
-# r = t[0:3, 0:3]
-# t1 = t[1, 0:3]
-# t2 = t[2, 0:3]
-# s = np.sqrt(np.sum(t1 * t1))
-# rn = r .dot( np.diagflat([1 / s, -1 / s, 1 / s]))
-# b = estimateRotationAngle(rn)
+
+R = np.array(([[0.07080083, -0.98242772, -0.17269392],
+               [0.99748969, 0.06951786, 0.01347424],
+               [0.00123216, 0.17321438, -0.98488337]]))
+estimateRotationAngle(R)

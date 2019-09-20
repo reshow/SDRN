@@ -58,7 +58,7 @@ class RZYNet:
             para_model = multi_gpu_model(model, gpus=self.gpu_num)
             para_model.compile(loss={'Posmap': getLossFunction(self.loss_function, rate=0.01), 'Offset': getLossFunction(self.loss_function, rate=1),
                                      'ParamR': getLossFunction('mae', rate=0.1), 'ParamT': getLossFunction('mae', rate=0.1),
-                                     'ParamS': getLossFunction('mae',rate=0.1)},
+                                     'ParamS': getLossFunction('mae', rate=0.1)},
                                optimizer=self.optimizer,
                                metrics={'Posmap': getLossFunction('frse'), 'Offset': getLossFunction('frse'),
                                         'ParamR': 'mae', 'ParamT': 'mae', 'ParamS': 'mae'})
