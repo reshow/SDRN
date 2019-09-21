@@ -544,19 +544,19 @@ class FitGenerator:
             else:
                 pos = self.all_image_data[index].posmap.astype(np.float32)
             if self.all_image_data[index].bbox_info is None:
-                bbox_info_path=self.all_image_data[index].bbox_info_path
-                bbox_info=sio.loadmat(bbox_info_path)
-                self.all_image_data[index].bbox_info=bbox_info
+                bbox_info_path = self.all_image_data[index].bbox_info_path
+                bbox_info = sio.loadmat(bbox_info_path)
+                self.all_image_data[index].bbox_info = bbox_info
             else:
-                bbox_info=self.all_image_data[index].bbox_info
+                bbox_info = self.all_image_data[index].bbox_info
 
             offset_path = self.all_image_data[index].offset_posmap_path
             offset = np.load(offset_path)
             # self.all_image_data[index].offset_posmap = offset
             if bbox_info is None:
-                print('no bbox',self.all_image_data[index].bbox_info_path)
+                print('\n no bbox\n', self.all_image_data[index].bbox_info_path, '\n')
             if 'TformOffset' not in bbox_info.keys():
-                print('no tform',self.all_image_data[index].bbox_info_path)
+                print('\n no tform\n', self.all_image_data[index].bbox_info_path, '\n')
                 continue
             trans_mat = bbox_info['TformOffset']
             # T_scale_1e4 = np.diagflat([1e4, 1e4, 1e4, 1])
@@ -577,13 +577,13 @@ class FitGenerator:
 
             R_flatten = estimateRotationAngle(R)
             if R_flatten[0] is None:
-                print(pos_path)
+                print('\n cannot estimate R\n', self.all_image_data[index].bbox_info_path, '\n')
                 continue
             R_flatten = np.reshape((np.array(R_flatten)), (3,)) / np.pi
             T_flatten = np.reshape(trans_mat[0:3, 3], (3,))
             pos = pos / 256.
             S = S * 5e2
-            offset=offset/2.0
+            offset = offset / 2.0
 
             if S > 1:
                 print('too large scale', S)
