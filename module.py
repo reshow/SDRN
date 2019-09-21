@@ -246,8 +246,8 @@ def RPFOModule(inpt):
     r = getRotateTensor(R)
     # 1e-4*5e2    *20=1
     r = r * s * 20.
-    t = T * 256.
-    pos = offset + mean_posmap_tensor
+    t = T * 280.
+    pos = offset*2 + mean_posmap_tensor
     pos = Reshape((65536, 3))(pos)
     tk1 = K.repeat(t, 65536)
 
