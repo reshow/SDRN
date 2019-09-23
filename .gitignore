@@ -15,3 +15,4 @@ PRNetReproduce/face3ddir/examples/Data/*
 *.h5
 tmp
 *.pkl
+*.pth

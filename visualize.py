@@ -8,7 +8,7 @@ from faceutil import mesh
 import matplotlib.pyplot as plt
 from skimage import io, transform
 # from test import readUVKpt
-import open3d as o3d
+# import open3d as o3d
 from data import UVmap2Mesh, uv_kpt
 
 

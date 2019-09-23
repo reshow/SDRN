@@ -58,14 +58,14 @@ class NetworkManager:
     def buildModel(self, args):
         print('bulding', args.netStructure)
         if args.netStructure == 'PRNet':
-            net_manager.net.buildPRNet()
+            self.net.buildPRNet()
         elif args.netStructure == 'CbamPRNet':
-            net_manager.net.buildCbamPRNet()
+            self.net.buildCbamPRNet()
         elif args.netStructure == 'InitPRNet':
-            net_manager.net.buildInitPRNet()
+            self.net.buildInitPRNet()
         elif args.netStructure == 'OffsetPRNet':
             self.is_offset_data = True
-            net_manager.net.buildOffsetPRNet()
+            self.net.buildOffsetPRNet()
         else:
             print('unknown network structure')
 
