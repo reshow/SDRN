@@ -98,11 +98,11 @@ class NetworkManager:
         metrics = getLossFunction('frse')()
 
         if self.is_offset_data:
-            train_data_loader = getDataLoader(self.train_data, mode='offset', batch_size=self.batch_size, is_shuffle=True, is_aug=True)
-            val_data_loader = getDataLoader(self.val_data, mode='offset', batch_size=self.batch_size, is_shuffle=False, is_aug=False)
+            train_data_loader = getDataLoader(self.train_data, mode='offset', batch_size=self.batch_size*self.gpu_num, is_shuffle=True, is_aug=True)
+            val_data_loader = getDataLoader(self.val_data, mode='offset', batch_size=self.batch_size*self.gpu_num, is_shuffle=False, is_aug=False)
         else:
-            train_data_loader = getDataLoader(self.train_data, mode='posmap', batch_size=self.batch_size, is_shuffle=True, is_aug=True)
-            val_data_loader = getDataLoader(self.val_data, mode='posmap', batch_size=self.batch_size, is_shuffle=False, is_aug=False)
+            train_data_loader = getDataLoader(self.train_data, mode='posmap', batch_size=self.batch_size*self.gpu_num, is_shuffle=True, is_aug=True)
+            val_data_loader = getDataLoader(self.val_data, mode='posmap', batch_size=self.batch_size*self.gpu_num, is_shuffle=False, is_aug=False)
 
         for epoch in range(self.start_epoch, self.epoch):
             print('Epoch: %d' % epoch)
