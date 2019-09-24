@@ -407,6 +407,8 @@ class FitGenerator:
         self.image_height = 256
         self.image_width = 256
         self.image_channel = 3
+        self.used_mem = 0
+        self.max_mem = 107374182400
 
     def gen(self, batch_size=64, gen_mode='random'):
         """
@@ -459,7 +461,9 @@ class FitGenerator:
             if self.all_image_data[index].image is None:
                 image_path = self.all_image_data[index].cropped_image_path
                 image = io.imread(image_path)
-                self.all_image_data[index].image = image.astype(np.uint8)
+                if self.used_mem < self.max_mem:
+                    self.all_image_data[index].image = image.astype(np.uint8)
+                    self.used_mem += sys.getsizeof(image)
                 image = image / 255.
             else:
                 image = self.all_image_data[index].image / 255.
