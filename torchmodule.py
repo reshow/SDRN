@@ -44,7 +44,7 @@ class PRNResBlock(nn.Module):
             Conv2d_BN_AC(in_channels=out_channels // 2, out_channels=out_channels // 2, stride=stride,
                          kernel_size=kernel_size, padding=(kernel_size - 1) // 2),
             nn.Conv2d(in_channels=out_channels // 2, out_channels=out_channels, stride=1, kernel_size=1),
-            nn.BatchNorm2d(out_channels),
+
         )
         # else:
         #     self.pipe = nn.Sequential(
@@ -58,16 +58,17 @@ class PRNResBlock(nn.Module):
         if with_conv_shortcut:
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_channels=in_channels, out_channels=out_channels, stride=stride, kernel_size=1),
-                nn.BatchNorm2d(out_channels))
+            )
 
-        self.AC = nn.Sequential(
+        self.BN_AC = nn.Sequential(
+            nn.BatchNorm2d(out_channels),
             nn.ReLU()
         )
 
     def forward(self, x):
         out = self.pipe(x)
         out = out + self.shortcut(x)
-        out = self.AC(out)
+        out = self.BN_AC(out)
         return out
 
 

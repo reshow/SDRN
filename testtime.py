@@ -174,16 +174,38 @@ def addImageData(data_dir):
     train_data.extend(all_data)
 
 
+def changeImageType(data_dir):
+    i = 0
+    for root, dirs, files in os.walk(data_dir):
+        for file in files:
+            file_name = file.split('.')[0]
+            file_type = file.split('.')[1]
+            if file_type == 'jpg':
+                image = io.imread(root + '/' + file)
+                np.save(root + '/' + str(file_name) + '.npy',image.astype(np.uint8))
+                print(i, end='\r')
+                i += 1
+
+
 if __name__ == '__main__':
-    addImageData('data/images/AFLW2000-crop')
-    fg = FitGenerator(train_data)
-    fg.read_img = True
-    fg.augment = True
-    fg.read_posmap=True
-    t1 = time.clock()
-    print(t1)
-    for _ in range(30):
-        fg.get(64, 'order')
-    t2 = time.clock()
-    t = t2 - t1
-    print(t)
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='data preprocess arguments')
+
+    parser.add_argument('-i', '--inputDir', default='data/images/AFLW2000', type=str,
+                        help='path to the input directory, where input images are stored.')
+    conf = parser.parse_args()
+    changeImageType(conf.inputDir)
+# addImageData('data/images/AFLW2000-crop')
+# fg = FitGenerator(train_data)
+# fg.read_img = True
+# fg.augment = True
+# fg.read_posmap=True
+# t1 = time.clock()
+# print(t1)
+# for _ in range(30):
+#     fg.get(64, 'order')
+# t2 = time.clock()
+# t = t2 - t1
+# print(t)
