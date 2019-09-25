@@ -355,7 +355,7 @@ class ImageData:
 
     def readPath(self, image_dir):
         image_name = image_dir.split('/')[-1]
-        self.cropped_image_path = image_dir + '/' + image_name + '_cropped.jpg'
+        self.cropped_image_path = image_dir + '/' + image_name + '_cropped.npy'
         self.cropped_posmap_path = image_dir + '/' + image_name + '_cropped_uv_posmap.npy'
         self.init_image_path = image_dir + '/' + image_name + '_init.jpg'
         self.init_posmap_path = image_dir + '/' + image_name + '_uv_posmap.npy'
@@ -392,8 +392,8 @@ class DataGenerator(Dataset):
         if self.mode == 'posmap':
             if self.all_image_data[index].image is None:
                 image_path = self.all_image_data[index].cropped_image_path
-                image = io.imread(image_path)
-                self.all_image_data[index].image = image.astype(np.uint8)
+                image = np.load(image_path)
+                self.all_image_data[index].image = image
                 image = image / 255.
             else:
                 image = self.all_image_data[index].image / 255.
@@ -413,8 +413,9 @@ class DataGenerator(Dataset):
         elif self.mode == 'offset':
             if self.all_image_data[index].image is None:
                 image_path = self.all_image_data[index].cropped_image_path
-                image = io.imread(image_path)
-                self.all_image_data[index].image = image.astype(np.uint8)
+                # image = io.imread(image_path)
+                image = np.load(image_path)
+                self.all_image_data[index].image = image
                 image = image / 255.
             else:
                 image = self.all_image_data[index].image / 255.

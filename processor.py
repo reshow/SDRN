@@ -261,8 +261,6 @@ class DataProcessor:
             new_kpt = []
             init_kpt = []
 
-
-
         # if self.is_augment:
         #     cropped_image = unchangeAugment(cropped_image)
         # cropped_image = gaussNoise(cropped_image)
@@ -273,8 +271,8 @@ class DataProcessor:
                      'TformOffset': T_3d.dot(T_bfm).astype(np.float32)})
         np.save(self.write_dir + '/' + self.image_name + '_cropped_uv_posmap.npy', uv_position_map.astype(np.float32))
         np.save(self.write_dir + '/' + self.image_name + '_offset_posmap.npy', uv_offset_map.astype(np.float32))
-        io.imsave(self.write_dir + '/' + self.image_name + '_cropped.jpg',
-                  (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
+        io.imsave(self.write_dir + '/' + self.image_name + '_cropped.jpg', (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
+        np.save(self.write_dir + '/' + self.image_name + '_cropped.npy', (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
 
     def processImage(self, image_path, output_dir):
         self.initialize(image_path, output_dir)

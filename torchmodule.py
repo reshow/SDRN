@@ -43,7 +43,8 @@ class PRNResBlock(nn.Module):
             Conv2d_BN_AC(in_channels=in_channels, out_channels=out_channels // 2, stride=1, kernel_size=1),
             Conv2d_BN_AC(in_channels=out_channels // 2, out_channels=out_channels // 2, stride=stride,
                          kernel_size=kernel_size, padding=(kernel_size - 1) // 2),
-            nn.Conv2d(in_channels=out_channels // 2, out_channels=out_channels, stride=1, kernel_size=1)
+            nn.Conv2d(in_channels=out_channels // 2, out_channels=out_channels, stride=1, kernel_size=1),
+            nn.BatchNorm2d(out_channels),
         )
         # else:
         #     self.pipe = nn.Sequential(
@@ -56,17 +57,17 @@ class PRNResBlock(nn.Module):
 
         if with_conv_shortcut:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, stride=stride, kernel_size=1))
+                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, stride=stride, kernel_size=1),
+                nn.BatchNorm2d(out_channels))
 
-        self.BN_AC = nn.Sequential(
-            nn.BatchNorm2d(out_channels),
+        self.AC = nn.Sequential(
             nn.ReLU()
         )
 
     def forward(self, x):
         out = self.pipe(x)
         out = out + self.shortcut(x)
-        out = self.BN_AC(out)
+        out = self.AC(out)
         return out
 
 
@@ -132,6 +133,21 @@ class RPFOModule(nn.Module):
         return pos
 
 
-class Regressor(nn.Module):
-    def __init__(self):
-        super(Regressor, self).__init__()
+class ParamRegressor(nn.Module):
+    def __init__(self, num_cluster=1, filters=512):
+        super(ParamRegressor, self).__init__()
+        self.pipe = nn.Sequential(
+            nn.AvgPool2d(8, stride=1),
+            nn.Linear(filters, filters),
+            nn.Linear(filters, filters)
+        )
+        self.R_layer = nn.Linear(filters, num_cluster * 3)
+        self.T_layer = nn.Linear(filters, num_cluster * 3)
+        self.S_layer = nn.Linear(filters, num_cluster)
+
+    def forward(self, x):
+        feat = self.pipe(x)
+        R = self.R_layer(feat)
+        T = self.T_layer(feat)
+        S = self.S_layer(feat)
+        return R, T, S

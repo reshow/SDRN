@@ -16,7 +16,7 @@ from torchmodel import TorchNet
 from torchdata import getDataLoader
 from torchloss import getErrorFunction, getLossFunction
 import torch
-
+import tensorboard
 
 class NetworkManager:
     def __init__(self, args):
