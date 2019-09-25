@@ -1,6 +1,7 @@
 import numpy as np
 from skimage import io, transform
 import os
+import sys
 import matplotlib.pyplot as plt
 import math
 import time
@@ -36,12 +37,17 @@ class NetworkManager:
         self.net = TorchNet(gpu_num=args.gpu, visible_gpus=args.visibleDevice, loss_function=args.lossFunction, learning_rate=args.learningRate)  # class of
         # RZYNet
         # if true, provide [pos offset R T] as groundtruth. Otherwise ,provide pos as GT
-        self.is_offset_data = False
+
+        # 0: normal PRN [image posmap]  1: offset [image offset R T S]
+        self.data_mode = 0
+        self.weight_decay = 0.0001
 
     def buildModel(self, args):
         print('building', args.netStructure)
         if args.netStructure == 'InitPRN':
             self.net.buildInitPRN()
+        elif args.netStructure == 'OffsetPRN':
+            self.data_mode = 1
         else:
             print('unknown network structure')
 
@@ -97,12 +103,17 @@ class NetworkManager:
         criterion = getLossFunction('fwrse')()
         metrics = getLossFunction('frse')()
 
-        if self.is_offset_data:
-            train_data_loader = getDataLoader(self.train_data, mode='offset', batch_size=self.batch_size*self.gpu_num, is_shuffle=True, is_aug=True)
-            val_data_loader = getDataLoader(self.val_data, mode='offset', batch_size=self.batch_size*self.gpu_num, is_shuffle=False, is_aug=False)
+        from thop import profile
+        sample_input = torch.randn((1, 3, 256, 256)).to(self.net.device)
+        flops, params = profile(model, inputs=(sample_input,))
+        print('params:%d  flops:%d' % (params, flops))
+
+        if self.data_mode == 1:
+            train_data_loader = getDataLoader(self.train_data, mode='offset', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True)
+            val_data_loader = getDataLoader(self.val_data, mode='offset', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False)
         else:
-            train_data_loader = getDataLoader(self.train_data, mode='posmap', batch_size=self.batch_size*self.gpu_num, is_shuffle=True, is_aug=True)
-            val_data_loader = getDataLoader(self.val_data, mode='posmap', batch_size=self.batch_size*self.gpu_num, is_shuffle=False, is_aug=False)
+            train_data_loader = getDataLoader(self.train_data, mode='posmap', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True)
+            val_data_loader = getDataLoader(self.val_data, mode='posmap', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False)
 
         for epoch in range(self.start_epoch, self.epoch):
             print('Epoch: %d' % epoch)
@@ -124,7 +135,13 @@ class NetworkManager:
                 # forward + backward
                 outputs = model(x)
 
-                loss = criterion(y, outputs)
+                # l2_weight_loss = torch.tensor(0).to(self.net.device).float()
+                # for name, param in model.named_parameters():
+                #     if 'weight' in name:
+                #         l2_weight_loss += torch.norm(param, 2)
+
+                loss = criterion(y, outputs)  # + l2_weight_loss * self.weight_decay
+
                 loss.backward()
                 optimizer.step()
 
@@ -132,7 +149,7 @@ class NetworkManager:
                 # 每训练1个batch打印一次loss和准确率
                 sum_loss += loss.item()
                 sum_metric_loss += metrics_loss.item()
-                print('\r[epoch:%d, iter:%d/%d] Loss: %.03f  Metrics: %.03f'
+                print('\r[epoch:%d, iter:%d/%d] Loss: %.04f  Metrics: %.04f'
                       % (epoch, i + 1, total_itr_num, sum_loss / (i + 1), sum_metric_loss / (i + 1)), end='')
 
             # 每训练完一个epoch测试一下准确率
@@ -148,8 +165,8 @@ class NetworkManager:
                     outputs = model(x)
                     metrics_loss = metrics(y, outputs)
                     sum_metric_loss += metrics_loss
-                print('val metrics: %.3f' % (sum_metric_loss / len(val_data_loader)))
-                print('Saving model......',end='\r')
+                print('val metrics: %.4f' % (sum_metric_loss / len(val_data_loader)))
+                print('Saving model......', end='\r')
                 torch.save(model.state_dict(), '%s/net_%03d.pth' % (self.model_save_path, epoch + 1))
 
                 # 记录最佳测试分类准确率并写入best_acc.txt文件中

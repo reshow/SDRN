@@ -66,7 +66,7 @@ class FitGenerator:
             image_path = self.all_image_data[indexs[i]].cropped_image_path
             image = io.imread(image_path) / 255.
             # image = transform.resize(image, (self.image_height, self.image_width, self.image_channel))
-            image = unchangeAugment(image)
+            # image = unchangeAugment(image)
             pos_path = self.all_image_data[indexs[i]].cropped_posmap_path
             pos = np.load(pos_path)
             pos = pos / 256.
@@ -181,8 +181,9 @@ if __name__ == '__main__':
     fg.augment = True
     fg.read_posmap=True
     t1 = time.clock()
+    print(t1)
     for _ in range(30):
-        fg.multiget(64, 'order')
+        fg.get(64, 'order')
     t2 = time.clock()
     t = t2 - t1
     print(t)

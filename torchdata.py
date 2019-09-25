@@ -50,20 +50,11 @@ def readUVKpt(uv_kpt_path):
     return uv_kpt
 
 
-def getTNormalizer():
-    T_norm = np.zeros((4, 4))
-    T_norm[0:3, 0:3] = 1
-    T_norm[0:3, 3] = 1 / 280.
-    T_norm[3, 3] = 1.
-    return T_norm.astype(np.float32)
-
-
 #  global data
 uv_coords = faceutil.morphable_model.load.load_uv_coords('data/Out/BFM_UV.mat')
 uv_coords = process_uv(uv_coords)
 uv_kpt = readUVKpt('uv-data/uv_kpt_ind.txt')
 uvmap_place_holder = np.ones((256, 256, 1))
-T_normalizer = getTNormalizer()
 
 
 def getLandmark(ipt):
@@ -336,7 +327,7 @@ def estimateRotationAngle(rot_mat):
         return x, y, z
 
     # print(R)
-    return None, None, None
+    return x, y, z
 
 
 def getMeanPosmap():
@@ -408,7 +399,6 @@ class DataGenerator(Dataset):
                 image = self.all_image_data[index].image / 255.
             if self.is_aug:
                 image = augmentation.prnAugment(image)
-
             if self.all_image_data[index].posmap is None:
                 pos_path = self.all_image_data[index].cropped_posmap_path
                 pos = np.load(pos_path)
@@ -416,11 +406,63 @@ class DataGenerator(Dataset):
                 self.all_image_data[index].posmap = pos
             else:
                 pos = self.all_image_data[index].posmap
-
             image = self.transform(image)
             pos = self.transform(pos)
-
             return image, pos
+
+        elif self.mode == 'offset':
+            if self.all_image_data[index].image is None:
+                image_path = self.all_image_data[index].cropped_image_path
+                image = io.imread(image_path)
+                self.all_image_data[index].image = image.astype(np.uint8)
+                image = image / 255.
+            else:
+                image = self.all_image_data[index].image / 255.
+            image = augmentation.prnAugment(image)
+
+            if self.all_image_data[index].bbox_info is None:
+                bbox_info_path = self.all_image_data[index].bbox_info_path
+                bbox_info = sio.loadmat(bbox_info_path)
+                self.all_image_data[index].bbox_info = bbox_info
+            else:
+                bbox_info = self.all_image_data[index].bbox_info
+
+            if self.all_image_data[index].offset_posmap is None:
+                offset_path = self.all_image_data[index].offset_posmap_path
+                offset = np.load(offset_path)
+                self.all_image_data[index].offset_posmap = offset.astype(np.float16)
+            else:
+                offset = self.all_image_data[index].offset_posmap
+
+            trans_mat = bbox_info['TformOffset']
+            # T_scale_1e4 = np.diagflat([1e4, 1e4, 1e4, 1])
+            # pos = offset + mean_posmap
+            # pos = np.concatenate((pos, uvmap_place_holder), axis=-1)
+            # pos = pos.dot(T.dot(T_scale_1e4).T)
+            # pos = pos[:, :, 0:3]
+
+            t0 = trans_mat[0:3, 0]
+            S = np.sqrt(np.sum(t0 * t0))
+            R = trans_mat[0:3, 0:3]
+            R = R.dot(np.diagflat([1 / S, -1 / S, 1 / S]))
+            R_flatten = estimateRotationAngle(R)
+            # if R_flatten[0] is None:
+            #     print('\n cannot estimate R\n', self.all_image_data[index].bbox_info_path, '\n')
+            #     return None
+            R_flatten = np.reshape((np.array(R_flatten)), (3,)) / np.pi
+            T_flatten = np.reshape(trans_mat[0:3, 3], (3,))
+
+            #  normalize
+            S = S * 5e2
+            offset = offset / 2.0
+            T_flatten = T_flatten / 300
+
+            if S > 1:
+                print('too large scale', S)
+            if (T_flatten > 1.1).any():
+                print('too large T', T_flatten)
+
+            return image, offset, R_flatten, T_flatten, S
 
         else:
             return None
@@ -431,5 +473,5 @@ class DataGenerator(Dataset):
 
 def getDataLoader(all_image_data, mode='posmap', batch_size=16, is_shuffle=False, is_aug=False):
     dataset = DataGenerator(all_image_data=all_image_data, mode=mode, is_aug=is_aug)
-    train_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=is_shuffle)
+    train_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=is_shuffle, num_workers=0, pin_memory=True)
     return train_loader

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from skimage import io, transform
 # from test import readUVKpt
 # import open3d as o3d
-from data import UVmap2Mesh, uv_kpt
+from data import UVmap2Mesh, uv_kpt, bfm2Mesh, getLandmark, mesh2UVmap,bfm
 
 
 def showLandmark(image, kpt):
@@ -40,6 +40,22 @@ def showLandmark2(image, kpt1, kpt2):
 
     plt.imshow(image)
     plt.show()
+
+
+def showGTLandmark(image_path):
+    image = io.imread(image_path) / 255.0
+    bfm_info = sio.loadmat(image_path.replace('jpg', 'mat'))
+    if 'pt3d_68' in bfm_info.keys():
+        kpt = bfm_info['pt3d_68'].T
+    else:
+        kpt = bfm_info['pt2d'].T
+    showLandmark(image, kpt)
+
+    mesh_info = bfm2Mesh(bfm_info, image.shape)
+
+    kpt2 = mesh_info['vertices'][bfm.kpt_ind]
+    showLandmark2(image, kpt, kpt2)
+    return kpt,kpt2
 
 
 def showImage(image, is_path=True):
@@ -126,6 +142,6 @@ if __name__ == "__main__":
     # showUVMap('data/images/AFLW2000-out/image00002/image00002_uv_posmap.npy', None,
     #           # 'data/images/AFLW2000-output/image00002/image00002_uv_texture_map.jpg',
     #           'data/images/AFLW2000-out/image00002/image00002_init.jpg', True)
-    show(['data/images/AFLW2000-crop-offset/image00002/image00002_cropped_uv_posmap.npy',
-          'data/images/AFLW2000-crop/image00002/image00002_uv_texture_map.jpg',
-          'data/images/AFLW2000-crop-offset/image00002/image00002_cropped.jpg'], is_file=True, mode='uvmap')
+    # show(['data/images/AFLW2000-crop-offset/image00002/image00002_cropped_uv_posmap.npy',
+    #       'data/images/AFLW2000-crop/image00002/image00002_uv_texture_map.jpg',
+    #       'data/images/AFLW2000-crop-offset/image00002/image00002_cropped.jpg'], is_file=True, mode='uvmap')

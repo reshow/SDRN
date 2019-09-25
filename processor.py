@@ -261,6 +261,8 @@ class DataProcessor:
             new_kpt = []
             init_kpt = []
 
+
+
         # if self.is_augment:
         #     cropped_image = unchangeAugment(cropped_image)
         # cropped_image = gaussNoise(cropped_image)
