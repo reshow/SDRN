@@ -103,10 +103,10 @@ class NetworkManager:
         criterion = getLossFunction('fwrse')()
         metrics = getLossFunction('frse')()
 
-        from thop import profile
-        sample_input = torch.randn((1, 3, 256, 256)).to(self.net.device)
-        flops, params = profile(model, inputs=(sample_input,))
-        print('params:%d  flops:%d' % (params, flops))
+        # from thop import profile
+        # sample_input = torch.randn((1, 3, 256, 256)).to(self.net.device)
+        # flops, params = profile(model, inputs=(sample_input,))
+        # print('params:%d  flops:%d' % (params, flops))
 
         if self.data_mode == 1:
             train_data_loader = getDataLoader(self.train_data, mode='offset', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True)
