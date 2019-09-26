@@ -146,7 +146,7 @@ class NetworkManager:
                     x = x.to(self.net.device).float()
                     y = [data[j] for j in range(1, 6)]
                     for j in range(5):
-                        y[j] = y[j].to(self.net.device).float()
+                        y[j] = y[j].to(x.device).float()
                     optimizer.zero_grad()
                     outputs = model(x, y[0], y[1], y[2], y[3], y[4])
                     loss = torch.mean(outputs[0])
@@ -164,7 +164,8 @@ class NetworkManager:
                 else:  # datamode==0
                     x = data[0]
                     y = data[1]
-                    x, y = x.to(self.net.device).float(), y.to(self.net.device).float()
+                    x = x.to(self.net.device).float()
+                    y = y.to(x.device).float()
                     optimizer.zero_grad()
                     outputs = model(x, y)
                     loss = outputs[0]
