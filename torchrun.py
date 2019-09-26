@@ -109,10 +109,11 @@ class NetworkManager:
         optimizer = self.net.optimizer
         scheduler = self.net.scheduler
 
-        # from thop import profile
-        # sample_input = torch.randn((1, 3, 256, 256)).to(self.net.device)
-        # flops, params = profile(model, inputs=(sample_input,))
-        # print('params:%d  flops:%d' % (params, flops))
+        from thop import profile
+        sample_input = torch.randn((1, 3, 256, 256)).to(self.net.device)
+        sample_output = torch.randn((1, 3, 256, 256)).to(self.net.device)
+        flops, params = profile(model, inputs=(sample_input, sample_output))
+        print('params:%d  flops:%d' % (params, flops))
 
         # l2_weight_loss = torch.tensor(0).to(self.net.device).float()
         # for name, param in model.named_parameters():
@@ -133,6 +134,7 @@ class NetworkManager:
             total_itr_num = len(train_data_loader.dataset) // train_data_loader.batch_size
 
             sum_loss = 0.0
+            t_start = time.time()
             if self.data_mode == 1:
                 sum_metric_loss = np.zeros(5)
             else:
@@ -153,7 +155,8 @@ class NetworkManager:
                     optimizer.step()
                     sum_loss += loss.item()
                     print('\r', end='')
-                    print('[epoch:%d, iter:%d/%d] Loss: %.04f ' % (epoch, i + 1, total_itr_num, sum_loss / (i + 1)), end='')
+                    print('[epoch:%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch, i + 1, total_itr_num, int(time.time() - t_start), sum_loss / (i + 1)),
+                          end='')
                     for j in range(5):
                         sum_metric_loss[j] += metrics_loss[j]
                         print(' Metrics%d: %.04f ' % (j, sum_metric_loss[j] / (i + 1)), end='')
@@ -172,8 +175,8 @@ class NetworkManager:
                     optimizer.step()
                     sum_loss += loss.item()
                     sum_metric_loss += metrics_loss.item()
-                    print('\r[epoch:%d, iter:%d/%d] Loss: %.04f  Metrics: %.04f'
-                          % (epoch, i + 1, total_itr_num, sum_loss / (i + 1), sum_metric_loss / (i + 1)), end='')
+                    print('\r[epoch:%d, iter:%d/%d, time:%d] Loss: %.04f  Metrics: %.04f'
+                          % (epoch, i + 1, total_itr_num, int(time.time() - t_start), sum_loss / (i + 1), sum_metric_loss / (i + 1)), end='')
 
             # validation
             print("\nWaiting Test!", end='\r')
@@ -211,15 +214,21 @@ class NetworkManager:
                         print('val Metrics%d: %.04f ' % (j, sum_metric_loss[j] / len(val_data_loader)), end='')
                     sum_metric_loss = sum_metric_loss[0]
                 else:
-                    print('val metrics: %.4f' % (sum_metric_loss / len(val_data_loader)))
+                    print('val metrics: %.4f' % (sum_metric_loss / len(val_data_loader)), end='')
 
                 print('\nSaving model......', end='\r')
-                torch.save(model.state_dict(), '%s/net_%03d.pth' % (self.model_save_path, epoch + 1))
+                if self.gpu_num > 1:
+                    torch.save(model.module.state_dict(), '%s/net_%03d.pth' % (self.model_save_path, epoch + 1))
+                else:
+                    torch.save(model.state_dict(), '%s/net_%03d.pth' % (self.model_save_path, epoch + 1))
                 # save best
                 if sum_metric_loss / len(val_data_loader) < best_acc:
                     print('new best %.4f improved from %.4f' % (sum_metric_loss / len(val_data_loader), best_acc))
                     best_acc = sum_metric_loss / len(val_data_loader)
-                    torch.save(model.state_dict(), '%s/best.pth' % self.model_save_path)
+                    if self.gpu_num > 1:
+                        torch.save(model.module.state_dict(), '%s/best.pth' % self.model_save_path)
+                    else:
+                        torch.save(model.state_dict(), '%s/best.pth' % self.model_save_path)
                 else:
                     print('not improved from %.4f' % best_acc)
 
