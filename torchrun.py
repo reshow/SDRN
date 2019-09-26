@@ -18,6 +18,7 @@ from torchloss import getErrorFunction, getLossFunction
 import torch
 import tensorboard
 
+
 class NetworkManager:
     def __init__(self, args):
         self.train_data = []
@@ -34,7 +35,7 @@ class NetworkManager:
 
         self.error_function = args.errorFunction
 
-        self.net = TorchNet(gpu_num=args.gpu, visible_gpus=args.visibleDevice, loss_function=args.lossFunction, learning_rate=args.learningRate)  # class of
+        self.net = TorchNet(gpu_num=args.gpu, visible_gpus=args.visibleDevice, learning_rate=args.learningRate)  # class of
         # RZYNet
         # if true, provide [pos offset R T] as groundtruth. Otherwise ,provide pos as GT
 
@@ -42,12 +43,19 @@ class NetworkManager:
         self.data_mode = 0
         self.weight_decay = 0.0001
 
+        self.criterion = None
+        self.metrics = None
+
     def buildModel(self, args):
         print('building', args.netStructure)
         if args.netStructure == 'InitPRN':
+            self.data_mode = 0
             self.net.buildInitPRN()
+
         elif args.netStructure == 'OffsetPRN':
             self.data_mode = 1
+            self.net.buildOffsetPRN()
+
         else:
             print('unknown network structure')
 
@@ -100,13 +108,16 @@ class NetworkManager:
         model = self.net.model
         optimizer = self.net.optimizer
         scheduler = self.net.scheduler
-        criterion = getLossFunction('fwrse')()
-        metrics = getLossFunction('frse')()
 
         # from thop import profile
         # sample_input = torch.randn((1, 3, 256, 256)).to(self.net.device)
         # flops, params = profile(model, inputs=(sample_input,))
         # print('params:%d  flops:%d' % (params, flops))
+
+        # l2_weight_loss = torch.tensor(0).to(self.net.device).float()
+        # for name, param in model.named_parameters():
+        #     if 'weight' in name:
+        #         l2_weight_loss += torch.norm(param, 2)
 
         if self.data_mode == 1:
             train_data_loader = getDataLoader(self.train_data, mode='offset', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True)
@@ -119,60 +130,96 @@ class NetworkManager:
             print('Epoch: %d' % epoch)
             scheduler.step()
             model.train()
-
             total_itr_num = len(train_data_loader.dataset) // train_data_loader.batch_size
 
             sum_loss = 0.0
-            sum_metric_loss = 0.0
-
+            if self.data_mode == 1:
+                sum_metric_loss = np.zeros(5)
+            else:
+                sum_metric_loss = 0.0
             for i, data in enumerate(train_data_loader):
                 # 准备数据
-                x, y = data
-                x, y = x.to(self.net.device), y.to(self.net.device)
-                x = x.float()
-                y = y.float()
-                optimizer.zero_grad()
-                # forward + backward
-                outputs = model(x)
+                if self.data_mode == 1:
+                    x = data[0]
+                    x = x.to(self.net.device).float()
+                    y = [data[j] for j in range(1, 6)]
+                    for j in range(5):
+                        y[j] = y[j].to(self.net.device).float()
+                    optimizer.zero_grad()
+                    outputs = model(x, y[0], y[1], y[2], y[3], y[4])
+                    loss = torch.mean(outputs[0])
+                    metrics_loss = [torch.mean(outputs[j]) for j in range(1, 6)]
+                    loss.backward()
+                    optimizer.step()
+                    sum_loss += loss.item()
+                    print('\r', end='')
+                    print('[epoch:%d, iter:%d/%d] Loss: %.04f ' % (epoch, i + 1, total_itr_num, sum_loss / (i + 1)), end='')
+                    for j in range(5):
+                        sum_metric_loss[j] += metrics_loss[j]
+                        print(' Metrics%d: %.04f ' % (j, sum_metric_loss[j] / (i + 1)), end='')
 
-                # l2_weight_loss = torch.tensor(0).to(self.net.device).float()
-                # for name, param in model.named_parameters():
-                #     if 'weight' in name:
-                #         l2_weight_loss += torch.norm(param, 2)
+                else:  # datamode==0
+                    x = data[0]
+                    y = data[1]
+                    x, y = x.to(self.net.device).float(), y.to(self.net.device).float()
+                    optimizer.zero_grad()
+                    outputs = model(x, y)
+                    loss = outputs[0]
+                    metrics_loss = outputs[1]
+                    loss = torch.mean(loss)
+                    metrics_loss = torch.mean(metrics_loss)
+                    loss.backward()
+                    optimizer.step()
+                    sum_loss += loss.item()
+                    sum_metric_loss += metrics_loss.item()
+                    print('\r[epoch:%d, iter:%d/%d] Loss: %.04f  Metrics: %.04f'
+                          % (epoch, i + 1, total_itr_num, sum_loss / (i + 1), sum_metric_loss / (i + 1)), end='')
 
-                loss = criterion(y, outputs)  # + l2_weight_loss * self.weight_decay
-
-                loss.backward()
-                optimizer.step()
-
-                metrics_loss = metrics(y, outputs)
-                # 每训练1个batch打印一次loss和准确率
-                sum_loss += loss.item()
-                sum_metric_loss += metrics_loss.item()
-                print('\r[epoch:%d, iter:%d/%d] Loss: %.04f  Metrics: %.04f'
-                      % (epoch, i + 1, total_itr_num, sum_loss / (i + 1), sum_metric_loss / (i + 1)), end='')
-
-            # 每训练完一个epoch测试一下准确率
+            # validation
             print("\nWaiting Test!", end='\r')
             with torch.no_grad():
-                sum_metric_loss = 0.0
+                if self.data_mode == 1:
+                    sum_metric_loss = np.zeros(5)
+                else:
+                    sum_metric_loss = 0.0
                 for data in val_data_loader:
                     model.eval()
-                    x, y = data
-                    x, y = x.to(self.net.device), y.to(self.net.device)
-                    x = x.float()
-                    y = y.float()
-                    outputs = model(x)
-                    metrics_loss = metrics(y, outputs)
-                    sum_metric_loss += metrics_loss
-                print('val metrics: %.4f' % (sum_metric_loss / len(val_data_loader)))
-                print('Saving model......', end='\r')
-                torch.save(model.state_dict(), '%s/net_%03d.pth' % (self.model_save_path, epoch + 1))
+                    if self.data_mode == 1:
+                        x = data[0]
+                        x = x.to(self.net.device).float()
+                        y = [data[j] for j in range(1, 6)]
+                        for j in range(5):
+                            y[j] = y[j].to(self.net.device).float()
+                        outputs = model(x, y[0], y[1], y[2], y[3], y[4])
+                        metrics_loss = [torch.mean(outputs[j]) for j in range(1, 6)]
+                        for j in range(5):
+                            sum_metric_loss[j] += metrics_loss[j]
 
-                # 记录最佳测试分类准确率并写入best_acc.txt文件中
+                    else:  # datamode==0
+                        x = data[0]
+                        y = data[1]
+                        x, y = x.to(self.net.device), y.to(self.net.device)
+                        x = x.float()
+                        y = y.float()
+                        outputs = model(x, y)
+                        metrics_loss = outputs[1]
+                        metrics_loss = torch.mean(metrics_loss)
+                        sum_metric_loss += metrics_loss
+
+                if self.data_mode == 1:
+                    for j in range(5):
+                        print('val Metrics%d: %.04f ' % (j, sum_metric_loss[j] / len(val_data_loader)), end='')
+                    sum_metric_loss = sum_metric_loss[0]
+                else:
+                    print('val metrics: %.4f' % (sum_metric_loss / len(val_data_loader)))
+
+                print('\nSaving model......', end='\r')
+                torch.save(model.state_dict(), '%s/net_%03d.pth' % (self.model_save_path, epoch + 1))
+                # save best
                 if sum_metric_loss / len(val_data_loader) < best_acc:
                     print('new best %.4f improved from %.4f' % (sum_metric_loss / len(val_data_loader), best_acc))
                     best_acc = sum_metric_loss / len(val_data_loader)
+                    torch.save(model.state_dict(), '%s/best.pth' % self.model_save_path)
                 else:
                     print('not improved from %.4f' % best_acc)
 
@@ -194,7 +241,6 @@ if __name__ == '__main__':
     parser.add_argument('-test', '--isTest', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-testsingle', '--isTestSingle', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-visualize', '--isVisualize', default=False, type=ast.literal_eval, help='')
-    parser.add_argument('-loss', '--lossFunction', default='fwrse', type=str, help='loss function: rse wrse frse fwrse')
     parser.add_argument('--errorFunction', default='nme2d', nargs='+', type=str)
     parser.add_argument('--loadModelPath', default=None, type=str, help='')
     parser.add_argument('--visibleDevice', default='0', type=str, help='')

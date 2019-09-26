@@ -326,8 +326,8 @@ def estimateRotationAngle(rot_mat):
     if isMatSame(rot_mat, maybe_R):
         return x, y, z
 
-    # print(R)
-    return x, y, z
+    # print(rot_mat)
+    return 0, 0, 0
 
 
 def getMeanPosmap():
@@ -352,6 +352,9 @@ class ImageData:
         self.posmap = None
         self.offset_posmap = None
         self.bbox_info = None
+        self.S = None
+        self.T = None
+        self.R = None
 
     def readPath(self, image_dir):
         image_name = image_dir.split('/')[-1]
@@ -419,51 +422,71 @@ class DataGenerator(Dataset):
                 image = image / 255.
             else:
                 image = self.all_image_data[index].image / 255.
-            image = augmentation.prnAugment(image)
 
+            image = augmentation.prnAugment(image)
+            image = self.transform(image)
             if self.all_image_data[index].bbox_info is None:
                 bbox_info_path = self.all_image_data[index].bbox_info_path
                 bbox_info = sio.loadmat(bbox_info_path)
+
+                trans_mat = bbox_info['TformOffset']
+                t0 = trans_mat[0:3, 0]
+                S = np.sqrt(np.sum(t0 * t0))
+                R = trans_mat[0:3, 0:3]
+                R = R.dot(np.diagflat([1 / S, -1 / S, 1 / S]))
+                R_flatten = estimateRotationAngle(R)
+
+                T_flatten = np.reshape(trans_mat[0:3, 3], (3,))
+                S = S * 5e2
+                T_flatten = T_flatten / 300
+                R_flatten = np.reshape((np.array(R_flatten)), (3,)) / np.pi
+                if S > 1:
+                    print('too large scale', S)
+                if (T_flatten > 1.1).any():
+                    print('too large T', T_flatten)
+                R_flatten = torch.from_numpy(R_flatten)
+                T_flatten = torch.from_numpy(T_flatten)
+                S = torch.tensor(S)
+
+                self.all_image_data[index].S = S
+                self.all_image_data[index].T = T_flatten
+                self.all_image_data[index].R = R_flatten
                 self.all_image_data[index].bbox_info = bbox_info
+
             else:
-                bbox_info = self.all_image_data[index].bbox_info
+                S = self.all_image_data[index].S
+                T_flatten = self.all_image_data[index].T
+                R_flatten = self.all_image_data[index].R
 
             if self.all_image_data[index].offset_posmap is None:
                 offset_path = self.all_image_data[index].offset_posmap_path
                 offset = np.load(offset_path)
+                offset = offset / 4.0
                 self.all_image_data[index].offset_posmap = offset.astype(np.float16)
+                if np.max(abs(offset)) > 1:
+                    print('\n toolarge offset', np.max(abs(offset)), '\n')
+                offset = self.transform(offset)
             else:
                 offset = self.all_image_data[index].offset_posmap
+                offset = self.transform(offset)
 
-            trans_mat = bbox_info['TformOffset']
+            if self.all_image_data[index].posmap is None:
+                pos_path = self.all_image_data[index].cropped_posmap_path
+                pos = np.load(pos_path)
+                pos = pos / 256.
+                # self.all_image_data[index].posmap = pos.astype(np.float16)
+                pos = self.transform(pos)
+            else:
+                pos = self.all_image_data[index].posmap
+                pos = self.transform(pos)
+
             # T_scale_1e4 = np.diagflat([1e4, 1e4, 1e4, 1])
             # pos = offset + mean_posmap
             # pos = np.concatenate((pos, uvmap_place_holder), axis=-1)
             # pos = pos.dot(T.dot(T_scale_1e4).T)
             # pos = pos[:, :, 0:3]
 
-            t0 = trans_mat[0:3, 0]
-            S = np.sqrt(np.sum(t0 * t0))
-            R = trans_mat[0:3, 0:3]
-            R = R.dot(np.diagflat([1 / S, -1 / S, 1 / S]))
-            R_flatten = estimateRotationAngle(R)
-            # if R_flatten[0] is None:
-            #     print('\n cannot estimate R\n', self.all_image_data[index].bbox_info_path, '\n')
-            #     return None
-            R_flatten = np.reshape((np.array(R_flatten)), (3,)) / np.pi
-            T_flatten = np.reshape(trans_mat[0:3, 3], (3,))
-
-            #  normalize
-            S = S * 5e2
-            offset = offset / 2.0
-            T_flatten = T_flatten / 300
-
-            if S > 1:
-                print('too large scale', S)
-            if (T_flatten > 1.1).any():
-                print('too large T', T_flatten)
-
-            return image, offset, R_flatten, T_flatten, S
+            return image, pos, offset, R_flatten, T_flatten, S
 
         else:
             return None

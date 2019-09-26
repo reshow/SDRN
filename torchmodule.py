@@ -99,18 +99,24 @@ def getRotationTensor(R_flatten):
     rz[:, 0, 1] = torch.sin(z)
     rz[:, 1, 0] = torch.sin(-z)
     rz[:, 0, 0] = torch.cos(z)
+
+    outr = torch.zeros((R_flatten.shape[0], 3, 3), device=R_flatten.device)
     for i in range(R_flatten.shape[0]):
-        rx[i] = rx[i].mm(ry[i]).mm(rz[i])
-    return rx
+        outr[i] = rx[i].mm(ry[i]).mm(rz[i])
+    return outr
+
+
+# torch.autograd.set_detect_anomaly(True)
 
 
 class RPFOModule(nn.Module):
     def __init__(self):
         super(RPFOModule, self).__init__()
-        self.mean_posmap_tensor = torch.from_numpy(mean_posmap)
+        self.mean_posmap_tensor = nn.Parameter(torch.from_numpy(mean_posmap.transpose((2, 0, 1))))
+        self.mean_posmap_tensor.requires_grad = False
         self.T_scale = 300
         self.S_scale = 1e4 / 5e2
-        self.offset_scale = 2
+        self.offset_scale = 4
 
     def forward(self, Offset, R, T, S):
         R = R * np.pi
@@ -127,11 +133,25 @@ class RPFOModule(nn.Module):
         pos = Offset * self.offset_scale + self.mean_posmap_tensor
         pos = pos.permute(0, 2, 3, 1)
         pos = pos.reshape((pos.shape[0], 65536, 3))
+
+        outpos = pos.clone()
         for i in range(pos.shape[0]):
-            pos[i] = pos[i].mm(r[i]) + t[i]
+            # pos[i] = pos[i].mm(r[i]) + t[i]
+            pos[i] = outpos[i].mm(r[i]) + t[i]
+
         pos = pos.reshape((pos.shape[0], 256, 256, 3))
-        pos = pos.reshape(0, 3, 1, 2)
+        pos = pos.permute(0, 3, 1, 2)
+        pos = pos / 256.
         return pos
+
+
+class Flatten(nn.Module):
+    def __init__(self):
+        super(Flatten, self).__init__()
+
+    def forward(self, x):
+        out = x.view(x.size(0), -1)
+        return out
 
 
 class ParamRegressor(nn.Module):
@@ -139,16 +159,24 @@ class ParamRegressor(nn.Module):
         super(ParamRegressor, self).__init__()
         self.pipe = nn.Sequential(
             nn.AvgPool2d(8, stride=1),
+            Flatten(),
             nn.Linear(filters, filters),
-            nn.Linear(filters, filters)
+            nn.BatchNorm1d(filters),
+            nn.ReLU(),
+            nn.Linear(filters, filters),
+            nn.BatchNorm1d(filters),
+            nn.ReLU()
         )
-        self.R_layer = nn.Linear(filters, num_cluster * 3)
-        self.T_layer = nn.Linear(filters, num_cluster * 3)
-        self.S_layer = nn.Linear(filters, num_cluster)
+        self.R_layer = nn.Sequential(nn.Linear(filters, num_cluster * 3), nn.Sigmoid())
+        self.T_layer = nn.Sequential(nn.Linear(filters, num_cluster * 3), nn.Sigmoid())
+        self.S_layer = nn.Sequential(nn.Linear(filters, num_cluster), nn.Sigmoid())
 
     def forward(self, x):
-        feat = self.pipe(x)
+        x_new = x.detach()
+        feat = self.pipe(x_new)
         R = self.R_layer(feat)
+        R = R * 2 - 1
         T = self.T_layer(feat)
+        T = T * 2 - 1
         S = self.S_layer(feat)
         return R, T, S
