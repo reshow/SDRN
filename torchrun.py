@@ -109,11 +109,11 @@ class NetworkManager:
         optimizer = self.net.optimizer
         scheduler = self.net.scheduler
 
-        from thop import profile
-        sample_input = torch.randn((1, 3, 256, 256)).to(self.net.device)
-        sample_output = torch.randn((1, 3, 256, 256)).to(self.net.device)
-        flops, params = profile(model, inputs=(sample_input, sample_output))
-        print('params:%d  flops:%d' % (params, flops))
+        # from thop import profile
+        # sample_input = torch.randn((1, 3, 256, 256)).to(self.net.device)
+        # sample_output = torch.randn((1, 3, 256, 256)).to(self.net.device)
+        # flops, params = profile(model, inputs=(sample_input, sample_output))
+        # print('params:%d  flops:%d' % (params, flops))
 
         # l2_weight_loss = torch.tensor(0).to(self.net.device).float()
         # for name, param in model.named_parameters():
