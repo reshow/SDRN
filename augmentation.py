@@ -111,7 +111,7 @@ def randomErase(x, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 / 0.3, v_l=0, v_
         h = int(np.sqrt(s * r))
         left = np.random.randint(0, img_w)
         top = np.random.randint(0, img_h)
-        if np.random.rand() > 0.5:
+        if np.random.rand() < 0.5:
             c = np.random.uniform(v_l, v_h)
             out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
         else:

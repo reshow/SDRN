@@ -58,7 +58,7 @@ def showGTLandmark(image_path):
     return kpt, kpt2
 
 
-def showImage(image, is_path=True):
+def showImage(image, is_path=False):
     if is_path:
         img = io.imread(image) / 255.
         io.imshow(img)

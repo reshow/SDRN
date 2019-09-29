@@ -15,6 +15,8 @@ from torch.utils.data import Dataset, DataLoader
 import torch
 from torchvision import transforms
 import augmentation
+import matplotlib.pyplot as plt
+import visualize
 
 #  global data
 bfm = MorphabelModel('data/Out/BFM.mat')
@@ -405,7 +407,7 @@ class DataGenerator(Dataset):
                 transforms.ToPILImage(mode='RGB'),
                 transforms.RandomOrder(
                     [transforms.RandomGrayscale(p=0.1),
-                     transforms.RandomApply([transforms.ColorJitter((0, 7), (0, 0.7), (0, 0.7), (0, 0.5))], p=0.25),
+                     transforms.RandomApply([transforms.ColorJitter(0.5, 0.5, 0.5, 0.5)], p=0.25),
                      # transforms.RandomApply([transforms.Lambda(lambda x: augmentation.channelScale(x))], p=0.25),
                      # transforms.RandomApply([transforms.Lambda(lambda x: augmentation.randomErase(x))], p=0.25)
                      ]),
@@ -414,7 +416,8 @@ class DataGenerator(Dataset):
             ]
         )
         self.toTensor = transforms.ToTensor()
-        self.no_augment = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))])
+        # mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+        self.no_augment = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])])
 
         for data in self.all_image_data:
             data.readFile(mode=self.mode)
@@ -422,14 +425,16 @@ class DataGenerator(Dataset):
     def __getitem__(self, index):
         if self.mode == 'posmap':
 
-            image = (self.all_image_data[index].image / 255.).astype(np.float32)
+            image = (self.all_image_data[index].image / 255.0).astype(np.float32)
             pos = self.all_image_data[index].posmap.astype(np.float32)
             if self.is_aug:
                 image, pos = augmentation.torchDataAugment(image, pos)
+                image = (image * 255.0).astype(np.uint8)
                 image = self.augment(image)
+                # image=augmentation.prnAugment(image)
+                # #image = self.no_augment(image)
             else:
                 image = self.no_augment(image)
-
             pos = pos / 256.
             pos = self.toTensor(pos)
             return image, pos
@@ -447,10 +452,11 @@ class DataGenerator(Dataset):
                 if np.random.rand() > 0.75:
                     rot_angle = np.random.randint(-45, 45)
                     rot_angle = rot_angle / 180. * np.pi
-                    R_3d,R_3d_inv = augmentation.getRotateMatrix3D(rot_angle, image.shape)
+                    R_3d, R_3d_inv = augmentation.getRotateMatrix3D(rot_angle, image.shape)
                     trans_mat = R_3d.dot(trans_mat)
                 image, pos = augmentation.torchDataAugment(image, pos, is_rotate=False)
-                image = self.augment(image)
+                # image = self.augment(image)
+                image = self.no_augment(image)
             else:
                 image = self.no_augment(image)
 
@@ -485,5 +491,5 @@ class DataGenerator(Dataset):
 
 def getDataLoader(all_image_data, mode='posmap', batch_size=16, is_shuffle=False, is_aug=False):
     dataset = DataGenerator(all_image_data=all_image_data, mode=mode, is_aug=is_aug)
-    train_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=is_shuffle, num_workers=0, pin_memory=True)
+    train_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=is_shuffle, num_workers=4, pin_memory=True)
     return train_loader
