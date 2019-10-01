@@ -442,8 +442,8 @@ class DataGenerator(Dataset):
         elif self.mode == 'offset':
 
             image = (self.all_image_data[index].image / 255.).astype(np.float32)
-            pos = self.all_image_data[index].posmap.astype(np.float32) / 256
-            offset = self.all_image_data[index].offset_posmap.astype(np.float32) / 4
+            pos = self.all_image_data[index].posmap.astype(np.float32)
+            offset = self.all_image_data[index].offset_posmap.astype(np.float32)
 
             bbox_info = self.all_image_data[index].bbox_info
             trans_mat = bbox_info['TformOffset']
@@ -455,8 +455,9 @@ class DataGenerator(Dataset):
                     R_3d, R_3d_inv = augmentation.getRotateMatrix3D(rot_angle, image.shape)
                     trans_mat = R_3d.dot(trans_mat)
                 image, pos = augmentation.torchDataAugment(image, pos, is_rotate=False)
-                # image = self.augment(image)
-                image = self.no_augment(image)
+                image = (image * 255.0).astype(np.uint8)
+                image = self.augment(image)
+                # 　image = self.no_augment(image)
             else:
                 image = self.no_augment(image)
 
@@ -470,13 +471,26 @@ class DataGenerator(Dataset):
             S = S * 5e2
             T_flatten = T_flatten / 300
             R_flatten = np.reshape((np.array(R_flatten)), (3,)) / np.pi
+            # print(R_flatten)
+            for i in range(3):
+                while R_flatten[i] < -1:
+                    R_flatten[i] += 2
+                while R_flatten[i] > 1:
+                    R_flatten[i] -= 2
+            # print(R_flatten)
             if S > 1:
                 print('too large scale', S)
-            if (T_flatten > 1.1).any():
+            if (abs(T_flatten) > 1).any():
                 print('too large T', T_flatten)
+            if (abs(R_flatten) > 1).any():
+                print('too large R', R_flatten)
+
             R_flatten = torch.from_numpy(R_flatten)
             T_flatten = torch.from_numpy(T_flatten)
             S = torch.tensor(S)
+
+            pos = pos / 256.
+            offset = offset / 4.
             pos = self.toTensor(pos)
             offset = self.toTensor(offset)
 
