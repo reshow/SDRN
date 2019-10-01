@@ -111,12 +111,18 @@ def randomErase(x, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 / 0.3, v_l=0, v_
         h = int(np.sqrt(s * r))
         left = np.random.randint(0, img_w)
         top = np.random.randint(0, img_h)
-        if np.random.rand() < 0.5:
+        if np.random.rand() < 0.25:
             c = np.random.uniform(v_l, v_h)
             out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
         else:
-            c = np.random.random((min(top + h, img_h) - top, min(left + w, img_w) - left, 3))
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
+            # c = np.random.random((min(top + h, img_h) - top, min(left + w, img_w) - left, 3))
+            # out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
+            c0 = np.random.uniform(v_l, v_h)
+            c1 = np.random.uniform(v_l, v_h)
+            c2 = np.random.uniform(v_l, v_h)
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :0] = c0
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :1] = c1
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :2] = c2
 
     return out
 
@@ -192,11 +198,13 @@ def unchangeAugment(x):
 def torchDataAugment(x, y, is_rotate=True):
     if is_rotate:
         if np.random.rand() > 0.75:
-            x, y = rotateData(x, y, 45)
+            x, y = rotateData(x, y, 90)
     if np.random.rand() > 0.75:
         x = randomErase(x)
     if np.random.rand() > 0.75:
         x = channelScale(x)
+    if np.random.rand() > 0.75:
+        x = gaussNoise(x)
     return x, y
 
 

@@ -258,8 +258,8 @@ class NetworkManager:
                 p = outputs[-1]
 
                 x = x.squeeze().cpu().numpy().transpose(1, 2, 0)
-                y = y.squeeze().cpu().numpy().transpose(1, 2, 0) * 256
-                p = p.squeeze().cpu().numpy().transpose(1, 2, 0) * 256
+                y = y.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+                p = p.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
                 b = sio.loadmat(self.test_data[i].bbox_info_path)
                 temp_errors = []
                 for error_func_name in error_func_list:

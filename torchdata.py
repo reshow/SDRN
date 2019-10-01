@@ -435,7 +435,7 @@ class DataGenerator(Dataset):
                 # #image = self.no_augment(image)
             else:
                 image = self.no_augment(image)
-            pos = pos / 256.
+            pos = pos / 280.
             pos = self.toTensor(pos)
             return image, pos
 
@@ -450,7 +450,7 @@ class DataGenerator(Dataset):
 
             if self.is_aug:
                 if np.random.rand() > 0.75:
-                    rot_angle = np.random.randint(-45, 45)
+                    rot_angle = np.random.randint(-90, 90)
                     rot_angle = rot_angle / 180. * np.pi
                     R_3d, R_3d_inv = augmentation.getRotateMatrix3D(rot_angle, image.shape)
                     trans_mat = R_3d.dot(trans_mat)
