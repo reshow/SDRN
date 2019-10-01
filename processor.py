@@ -256,7 +256,7 @@ class DataProcessor:
             # get gt landmark68
             init_kpt = self.bfm_info['pt3d_68'].T
             init_kpt_4d = np.concatenate((init_kpt, np.ones((68, 1))), axis=-1)
-            new_kpt = init_kpt_4d.dot(T_3d)[:, 0:3]
+            new_kpt = init_kpt_4d.dot(T_3d.T)[:, 0:3]
         else:
             new_kpt = []
             init_kpt = []

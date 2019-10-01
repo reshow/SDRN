@@ -15,6 +15,8 @@ from torch.utils.data import Dataset, DataLoader
 import torch
 from torchvision import transforms
 import augmentation
+import matplotlib.pyplot as plt
+import visualize
 
 #  global data
 bfm = MorphabelModel('data/Out/BFM.mat')
@@ -370,6 +372,18 @@ class ImageData:
         self.offset_posmap_path = image_dir + '/' + image_name + '_offset_posmap.npy'
         # TODO:read bbox and tform
 
+    def readFile(self, mode='posmap'):
+        if mode == 'posmap':
+            self.image = np.load(self.cropped_image_path).astype(np.uint8)
+            self.posmap = np.load(self.cropped_posmap_path).astype(np.float16)
+        elif mode == 'offset':
+            self.image = np.load(self.cropped_image_path).astype(np.uint8)
+            self.posmap = np.load(self.cropped_posmap_path).astype(np.float16)
+            self.offset_posmap = np.load(self.offset_posmap_path).astype(np.float16)
+            self.bbox_info = sio.loadmat(self.bbox_info_path)
+        else:
+            pass
+
 
 def toTensor(image):
     image = image.transpose((2, 0, 1))
@@ -388,103 +402,83 @@ class DataGenerator(Dataset):
         self.mode = mode
         self.is_aug = is_aug
 
-        self.transform = transforms.Compose(
-            [transforms.ToTensor()])
+        self.augment = transforms.Compose(
+            [
+                transforms.ToPILImage(mode='RGB'),
+                transforms.RandomOrder(
+                    [transforms.RandomGrayscale(p=0.1),
+                     transforms.RandomApply([transforms.ColorJitter(0.5, 0.5, 0.5, 0.5)], p=0.25),
+                     # transforms.RandomApply([transforms.Lambda(lambda x: augmentation.channelScale(x))], p=0.25),
+                     # transforms.RandomApply([transforms.Lambda(lambda x: augmentation.randomErase(x))], p=0.25)
+                     ]),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+            ]
+        )
+        self.toTensor = transforms.ToTensor()
+        # mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+        self.no_augment = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])])
+
+        for data in self.all_image_data:
+            data.readFile(mode=self.mode)
 
     def __getitem__(self, index):
         if self.mode == 'posmap':
-            if self.all_image_data[index].image is None:
-                image_path = self.all_image_data[index].cropped_image_path
-                image = np.load(image_path)
-                self.all_image_data[index].image = image
-                image = image / 255.
-            else:
-                image = self.all_image_data[index].image / 255.
+
+            image = (self.all_image_data[index].image / 255.0).astype(np.float32)
+            pos = self.all_image_data[index].posmap.astype(np.float32)
             if self.is_aug:
-                image = augmentation.prnAugment(image)
-            if self.all_image_data[index].posmap is None:
-                pos_path = self.all_image_data[index].cropped_posmap_path
-                pos = np.load(pos_path)
-                pos = (pos / 256.).astype(np.float16)
-                self.all_image_data[index].posmap = pos
+                image, pos = augmentation.torchDataAugment(image, pos)
+                image = (image * 255.0).astype(np.uint8)
+                image = self.augment(image)
+                # image=augmentation.prnAugment(image)
+                # #image = self.no_augment(image)
             else:
-                pos = self.all_image_data[index].posmap
-            image = self.transform(image)
-            pos = self.transform(pos)
+                image = self.no_augment(image)
+            pos = pos / 280.
+            pos = self.toTensor(pos)
             return image, pos
 
         elif self.mode == 'offset':
-            if self.all_image_data[index].image is None:
-                image_path = self.all_image_data[index].cropped_image_path
-                # image = io.imread(image_path)
-                image = np.load(image_path)
-                self.all_image_data[index].image = image
-                image = image / 255.
+
+            image = (self.all_image_data[index].image / 255.).astype(np.float32)
+            pos = self.all_image_data[index].posmap.astype(np.float32) / 256
+            offset = self.all_image_data[index].offset_posmap.astype(np.float32) / 4
+
+            bbox_info = self.all_image_data[index].bbox_info
+            trans_mat = bbox_info['TformOffset']
+
+            if self.is_aug:
+                if np.random.rand() > 0.75:
+                    rot_angle = np.random.randint(-90, 90)
+                    rot_angle = rot_angle / 180. * np.pi
+                    R_3d, R_3d_inv = augmentation.getRotateMatrix3D(rot_angle, image.shape)
+                    trans_mat = R_3d.dot(trans_mat)
+                image, pos = augmentation.torchDataAugment(image, pos, is_rotate=False)
+                # image = self.augment(image)
+                image = self.no_augment(image)
             else:
-                image = self.all_image_data[index].image / 255.
+                image = self.no_augment(image)
 
-            image = augmentation.prnAugment(image)
-            image = self.transform(image)
-            if self.all_image_data[index].bbox_info is None:
-                bbox_info_path = self.all_image_data[index].bbox_info_path
-                bbox_info = sio.loadmat(bbox_info_path)
+            t0 = trans_mat[0:3, 0]
+            S = np.sqrt(np.sum(t0 * t0))
+            R = trans_mat[0:3, 0:3]
+            R = R.dot(np.diagflat([1 / S, -1 / S, 1 / S]))
+            R_flatten = estimateRotationAngle(R)
 
-                trans_mat = bbox_info['TformOffset']
-                t0 = trans_mat[0:3, 0]
-                S = np.sqrt(np.sum(t0 * t0))
-                R = trans_mat[0:3, 0:3]
-                R = R.dot(np.diagflat([1 / S, -1 / S, 1 / S]))
-                R_flatten = estimateRotationAngle(R)
-
-                T_flatten = np.reshape(trans_mat[0:3, 3], (3,))
-                S = S * 5e2
-                T_flatten = T_flatten / 300
-                R_flatten = np.reshape((np.array(R_flatten)), (3,)) / np.pi
-                if S > 1:
-                    print('too large scale', S)
-                if (T_flatten > 1.1).any():
-                    print('too large T', T_flatten)
-                R_flatten = torch.from_numpy(R_flatten)
-                T_flatten = torch.from_numpy(T_flatten)
-                S = torch.tensor(S)
-
-                self.all_image_data[index].S = S
-                self.all_image_data[index].T = T_flatten
-                self.all_image_data[index].R = R_flatten
-                self.all_image_data[index].bbox_info = bbox_info
-
-            else:
-                S = self.all_image_data[index].S
-                T_flatten = self.all_image_data[index].T
-                R_flatten = self.all_image_data[index].R
-
-            if self.all_image_data[index].offset_posmap is None:
-                offset_path = self.all_image_data[index].offset_posmap_path
-                offset = np.load(offset_path)
-                offset = offset / 4.0
-                self.all_image_data[index].offset_posmap = offset.astype(np.float16)
-                if np.max(abs(offset)) > 1:
-                    print('\n toolarge offset', np.max(abs(offset)), '\n')
-                offset = self.transform(offset)
-            else:
-                offset = self.all_image_data[index].offset_posmap
-                offset = self.transform(offset)
-
-            if self.all_image_data[index].posmap is None:
-                pos_path = self.all_image_data[index].cropped_posmap_path
-                pos = np.load(pos_path)
-                pos = pos / 256.
-                # self.all_image_data[index].posmap = pos.astype(np.float16)
-                pos = self.transform(pos)
-            else:
-                pos = self.all_image_data[index].posmap
-                pos = self.transform(pos)
-
-            # T_scale_1e4 = np.diagflat([1e4, 1e4, 1e4, 1])
-            # pos = offset + mean_posmap
-            # pos = np.concatenate((pos, uvmap_place_holder), axis=-1)
-            # pos = pos.dot(T.dot(T_scale_1e4).T)
-            # pos = pos[:, :, 0:3]
+            T_flatten = np.reshape(trans_mat[0:3, 3], (3,))
+            S = S * 5e2
+            T_flatten = T_flatten / 300
+            R_flatten = np.reshape((np.array(R_flatten)), (3,)) / np.pi
+            if S > 1:
+                print('too large scale', S)
+            if (T_flatten > 1.1).any():
+                print('too large T', T_flatten)
+            R_flatten = torch.from_numpy(R_flatten)
+            T_flatten = torch.from_numpy(T_flatten)
+            S = torch.tensor(S)
+            pos = self.toTensor(pos)
+            offset = self.toTensor(offset)
 
             return image, pos, offset, R_flatten, T_flatten, S
 
@@ -497,5 +491,5 @@ class DataGenerator(Dataset):
 
 def getDataLoader(all_image_data, mode='posmap', batch_size=16, is_shuffle=False, is_aug=False):
     dataset = DataGenerator(all_image_data=all_image_data, mode=mode, is_aug=is_aug)
-    train_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=is_shuffle, num_workers=0, pin_memory=True)
+    train_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=is_shuffle, num_workers=4, pin_memory=True)
     return train_loader
