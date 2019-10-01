@@ -21,31 +21,31 @@ class InitLoss(nn.Module):
 class OffsetLoss(nn.Module):
     def __init__(self):
         super(OffsetLoss, self).__init__()
-        self.criterion0 = getLossFunction('fwrse')(0)
-        self.criterion1 = getLossFunction('fwrse')(0.5)
-        self.criterion2 = getLossFunction('mae')(0.5)
-        self.criterion3 = getLossFunction('mae')(1)
-        self.criterion4 = getLossFunction('mae')(0.25)
-        self.metrics0 = getLossFunction('frse')(1.)
-        self.metrics1 = getLossFunction('frse')(1.)
-        self.metrics2 = getLossFunction('mae')(1.)
-        self.metrics3 = getLossFunction('mae')(1.)
-        self.metrics4 = getLossFunction('mae')(1.)
+        self.criterion = [getLossFunction('fwrse')(0),
+                          getLossFunction('fwrse')(0.5),
+                          getLossFunction('mae')(0.5),
+                          getLossFunction('mae')(1),
+                          getLossFunction('mae')(0.25)]
+        self.metrics = [getLossFunction('frse')(1.),
+                        getLossFunction('frse')(1.),
+                        getLossFunction('mae')(1.),
+                        getLossFunction('mae')(1.),
+                        getLossFunction('mae')(1.)]
 
     def forward(self, posmap, offset, r, t, s,
                 gt_posmap, gt_offset, gt_r, gt_t, gt_s):
-        loss_posmap = self.criterion0(gt_posmap, posmap)
-        loss_offset = self.criterion1(gt_offset, offset)
-        loss_r = self.criterion2(gt_r, r)
-        loss_t = self.criterion3(gt_t, t)
-        loss_s = self.criterion4(gt_s, s)
+        loss_posmap = self.criterion[0](gt_posmap, posmap)
+        loss_offset = self.criterion[1](gt_offset, offset)
+        loss_r = self.criterion[2](gt_r, r)
+        loss_t = self.criterion[3](gt_t, t)
+        loss_s = self.criterion[4](gt_s, s)
         loss = loss_posmap + loss_offset + loss_r + loss_t + loss_s
 
-        metrics_posmap = self.metrics0(gt_posmap, posmap)
-        metrics_offset = self.metrics1(gt_offset, offset)
-        metrics_r = self.metrics2(gt_r, r)
-        metrics_t = self.metrics3(gt_t, t)
-        metrics_s = self.metrics4(gt_s, s)
+        metrics_posmap = self.metrics[0](gt_posmap, posmap)
+        metrics_offset = self.metrics[1](gt_offset, offset)
+        metrics_r = self.metrics[2](gt_r, r)
+        metrics_t = self.metrics[3](gt_t, t)
+        metrics_s = self.metrics[4](gt_s, s)
         return loss, metrics_posmap, metrics_offset, metrics_r, metrics_t, metrics_s
 
 
@@ -200,7 +200,7 @@ class TorchNet:
         # model.cuda()
 
         self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.5)
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.25)
 
     def buildOffsetPRN(self):
 

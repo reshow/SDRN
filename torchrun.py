@@ -13,7 +13,7 @@ from visualize import show, showMesh, showImage, showLandmark, showLandmark2
 import pickle
 from torchdata import ImageData
 from torchmodel import TorchNet
-from torchdata import getDataLoader, DataGenerator
+from torchdata import getDataLoader
 from torchloss import getErrorFunction, getLossFunction
 import torch
 import tensorboard
@@ -186,8 +186,8 @@ class NetworkManager:
                     sum_metric_loss = np.zeros(5)
                 else:
                     sum_metric_loss = 0.0
-                model.eval()
                 for data in val_data_loader:
+                    model.eval()
                     if self.data_mode == 1:
                         x = data[0]
                         x = x.to(self.net.device).float()
@@ -232,53 +232,6 @@ class NetworkManager:
                         torch.save(model.state_dict(), '%s/best.pth' % self.model_save_path)
                 else:
                     print('not improved from %.4f' % best_acc)
-
-    def test(self, error_func_list=None, is_visualize=False):
-        total_task = len(self.test_data)
-        print('total img:', total_task)
-
-        model = self.net.model
-        total_error_list = []
-        if self.data_mode == 1:
-            data_generator = DataGenerator(all_image_data=self.test_data, mode="offset", is_aug=False)
-        else:
-            data_generator = DataGenerator(all_image_data=self.test_data, mode="posmap", is_aug=False)
-        with torch.no_grad():
-            model.eval()
-            for i in range(len(self.test_data)):
-                data = data_generator.__getitem__(i)
-                x = data[0]
-                y = data[1]
-                x = torch.unsqueeze(x, 0)
-                y = torch.unsqueeze(y, 0)
-                x, y = x.to(self.net.device), y.to(self.net.device)
-                x = x.float()
-                y = y.float()
-                outputs = model(x, y)
-                p = outputs[-1]
-
-                x = x.squeeze().cpu().numpy().transpose(1, 2, 0)
-                y = y.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
-                p = p.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
-                b = sio.loadmat(self.test_data[i].bbox_info_path)
-                temp_errors = []
-                for error_func_name in error_func_list:
-                    error_func = getErrorFunction(error_func_name)
-                    error = error_func(y, p, b['Bbox'], b['Kpt'])
-                    temp_errors.append(error)
-                total_error_list.append(temp_errors)
-                print(self.test_data[i].init_image_path, temp_errors)
-            mean_errors = np.mean(total_error_list, axis=0)
-            for i in range(len(error_func_list)):
-                print(error_func_list[i], mean_errors[i])
-
-            se_idx = np.argsort(np.sum(total_error_list, axis=-1))
-            se_data_list = np.array(self.test_data)[se_idx]
-            se_path_list = [a.cropped_image_path for a in se_data_list]
-            sep = '\n'
-            fout = open('errororder.txt', 'w', encoding='utf-8')
-            fout.write(sep.join(se_path_list))
-            fout.close()
 
 
 if __name__ == '__main__':
@@ -331,10 +284,3 @@ if __name__ == '__main__':
         if run_args.loadModelPath is not None:
             net_manager.net.loadWeights(run_args.loadModelPath)
         net_manager.train()
-
-    if run_args.isTest:
-        for dir in run_args.testDataDir:
-            net_manager.addImageData(dir, 'test')
-        if run_args.loadModelPath is not None:
-            net_manager.net.loadWeights(run_args.loadModelPath)
-            net_manager.test(error_func_list=run_args.errorFunction, is_visualize=run_args.isVisualize)
