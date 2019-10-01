@@ -21,17 +21,13 @@ def PRNLoss(is_foreface=False, is_weighted=False):
         def __init__(self, rate=1.0):
             super(TemplateLoss, self).__init__()
             self.rate = rate
-            self.weight_mask = nn.Parameter(weight_mask.clone())
-            self.face_mask = nn.Parameter(face_mask.clone())
-            self.weight_mask.requires_grad = False
-            self.face_mask.requires_grad = False
 
         def forward(self, y_true, y_pred):
             dist = torch.sqrt(torch.sum((y_true - y_pred) ** 2, 1))
             if is_weighted:
-                dist = dist * self.weight_mask
+                dist = dist * weight_mask
             if is_foreface:
-                dist = dist * (self.face_mask * face_mask_mean_fix_rate)
+                dist = dist * (face_mask * face_mask_mean_fix_rate)
             loss = torch.mean(dist)
             return loss * self.rate
 
@@ -53,7 +49,7 @@ def ParamLoss():
 
 def getLossFunction(loss_func_name='SquareError'):
     if loss_func_name == 'RootSquareError' or loss_func_name == 'rse':
-        return PRNLoss(is_foreface=False, is_weighted=False)
+        return PRNLoss(is_foreface=False, is_weighted=False )
     elif loss_func_name == 'WeightedRootSquareError' or loss_func_name == 'wrse':
         return PRNLoss(is_foreface=False, is_weighted=True)
     elif loss_func_name == 'ForefaceRootSquareError' or loss_func_name == 'frse':
