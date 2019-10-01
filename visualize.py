@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from skimage import io, transform
 # from test import readUVKpt
 # import open3d as o3d
-from data import UVmap2Mesh, uv_kpt, bfm2Mesh, getLandmark, mesh2UVmap,bfm
+from data import UVmap2Mesh, uv_kpt, bfm2Mesh, getLandmark, mesh2UVmap, bfm
 
 
 def showLandmark(image, kpt):
@@ -55,10 +55,10 @@ def showGTLandmark(image_path):
 
     kpt2 = mesh_info['vertices'][bfm.kpt_ind]
     showLandmark2(image, kpt, kpt2)
-    return kpt,kpt2
+    return kpt, kpt2
 
 
-def showImage(image, is_path=True):
+def showImage(image, is_path=False):
     if is_path:
         img = io.imread(image) / 255.
         io.imshow(img)
@@ -82,15 +82,15 @@ def showMesh(mesh_info, init_img=None):
     else:
         plt.subplot(1, 3, 1)
         plt.imshow(mesh_image)
-        verify_img = init_img.copy()
-        for i in range(height):
-            for j in range(width):
-                if (mesh_image[i][j] > 0).any():
-                    verify_img[i][j] = mesh_image[i][j]
-        plt.subplot(1, 3, 2)
-        plt.imshow(verify_img)
+
         plt.subplot(1, 3, 3)
         plt.imshow(init_img)
+
+        verify_img = mesh.render.render_colors(mesh_info['vertices'], mesh_info['triangles'], mesh_info['colors'],
+                                               height, width, channel, BG=init_img)
+        plt.subplot(1, 3, 2)
+        plt.imshow(verify_img)
+
         plt.show()
 
 

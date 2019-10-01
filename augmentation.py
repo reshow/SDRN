@@ -4,6 +4,10 @@ import math
 import copy
 from PIL import ImageEnhance, ImageOps, ImageFile, Image
 from imgaug import augmenters as iaa
+import cv2
+
+
+# import numba
 
 
 # sometimes = lambda aug: iaa.Sometimes(0.5, aug)
@@ -51,19 +55,29 @@ def getRotateMatrix3D(angle, image_shape):
     return rt_mat.astype(np.float32), rt_mat_inv.astype(np.float32)
 
 
-def rotateData(x, y):
-    angle = np.random.randint(-90, 90)
-    angle = angle / 180. * np.pi
+# @numba.jit(numba.float32(numba.float32,numba.float32))
+def myDot(a, b):
+    return np.dot(a, b)
+
+
+def rotateData(x, y, angle_range=45, specify_angle=None):
+    if specify_angle is None:
+        angle = np.random.randint(-angle_range, angle_range)
+        angle = angle / 180. * np.pi
+    else:
+        angle = specify_angle
     [image_height, image_width, image_channel] = x.shape
     # move-rotate-move
     [rform, rform_inv] = getRotateMatrix(angle, x.shape)
 
-    rotate_x = transform.warp(x, rform_inv,
-                              output_shape=(image_height, image_width))
+    # rotate_x = transform.warp(x, rform_inv,
+    #                           output_shape=(image_height, image_width))
+    rotate_x = cv2.warpPerspective(x, rform, (image_height, image_width))
     rotate_y = y.copy()
     rotate_y[:, :, 2] = 1.
     rotate_y = rotate_y.reshape(image_width * image_height, image_channel)
-    rotate_y = rotate_y.dot(rform.T)
+    # rotate_y = rotate_y.dot(rform.T)
+    rotate_y = myDot(rotate_y, rform.T)
     rotate_y = rotate_y.reshape(image_height, image_width, image_channel)
     rotate_y[:, :, 2] = y[:, :, 2]
     # for i in range(image_height):
@@ -71,6 +85,9 @@ def rotateData(x, y):
     #         rotate_y[i][j][2] = 1.
     #         rotate_y[i][j] = rotate_y[i][j].dot(rform.T)
     #         rotate_y[i][j][2] = y[i][j][2]
+    # tex = np.ones((256, 256, 3))
+    # from visualize import show
+    # show([rotate_y, tex, rotate_x.astype(np.float32)], mode='uvmap')
     return rotate_x, rotate_y
 
 
@@ -94,9 +111,18 @@ def randomErase(x, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 / 0.3, v_l=0, v_
         h = int(np.sqrt(s * r))
         left = np.random.randint(0, img_w)
         top = np.random.randint(0, img_h)
-        c = np.random.uniform(v_l, v_h)
-
-        out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
+        if np.random.rand() < 0.25:
+            c = np.random.uniform(v_l, v_h)
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
+        else:
+            # c = np.random.random((min(top + h, img_h) - top, min(left + w, img_w) - left, 3))
+            # out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
+            c0 = np.random.uniform(v_l, v_h)
+            c1 = np.random.uniform(v_l, v_h)
+            c2 = np.random.uniform(v_l, v_h)
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :0] = c0
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :1] = c1
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :2] = c2
 
     return out
 
@@ -104,11 +130,12 @@ def randomErase(x, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 / 0.3, v_l=0, v_
 def channelScale(x, min_rate=0.6, max_rate=1.4):
     out = x.copy()
     for i in range(3):
-        r = np.random.uniform(0.6, 1.4)
+        r = np.random.uniform(min_rate, max_rate)
         out[:, :, i] = out[:, :, i] * r
     return out
 
 
+# useless
 aug_seq = iaa.Sequential([
     iaa.SomeOf((0, 5),
                [
@@ -148,6 +175,7 @@ aug_seq = iaa.Sequential([
 ])
 
 
+# used in keras version
 def prnAugment(x):
     if np.random.rand() > 0.75:
         x = randomErase(x)
@@ -156,6 +184,7 @@ def prnAugment(x):
     return x
 
 
+# useless
 def unchangeAugment(x):
     if np.random.rand() > 0.5:
         x = randomColor(x)
@@ -166,29 +195,29 @@ def unchangeAugment(x):
     return x
 
 
+def torchDataAugment(x, y, is_rotate=True):
+    if is_rotate:
+        if np.random.rand() > 0.75:
+            x, y = rotateData(x, y, 90)
+    if np.random.rand() > 0.75:
+        x = randomErase(x)
+    if np.random.rand() > 0.75:
+        x = channelScale(x)
+    if np.random.rand() > 0.75:
+        x = gaussNoise(x)
+    return x, y
+
+
 if __name__ == '__main__':
     import time
 
     x = io.imread('data/images/AFLW2000-crop/image00004/image00004_cropped.jpg') / 255.
-    y = np.load('data/images/AFLW2000-crop/image00004/image00004_uv_posmap.npy')
+    x = x.astype(np.float32)
+    y = np.load('data/images/AFLW2000-crop/image00004/image00004_cropped_uv_posmap.npy')
+    y = y.astype(np.float32)
+
     t1 = time.clock()
-    import matplotlib.pyplot as plt
-    for i in range(640):
-        z=prnAugment(x)
+    for i in range(1000):
+        xr, yr = torchDataAugment(x, y)
 
     print(time.clock() - t1)
-    io.imshow(z)
-    plt.show()
-    import skimage
-
-
-
-    # if np.random.rand() > 0.5:
-    #     angle = np.random.randint(-90, 90)
-    # else:
-    #     angle = 0
-    # angle = angle / 180. * np.pi
-    # [rt_mat, rt_mat_inv] = getRotateMatrix(angle, [256, 256, 3])
-    # cropped_image = skimage.transform.warp(x, rt_mat_inv, output_shape=(256, 256))
-    # io.imshow(cropped_image)
-    # plt.show()
