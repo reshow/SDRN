@@ -18,7 +18,10 @@ from torchloss import getErrorFunction, getLossFunction
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-writer = SummaryWriter(log_dir='tmp')
+now_time = time.localtime()
+save_dir_time = '/' + str(now_time.tm_year) + '-' + str(now_time.tm_mon) + '-' + str(now_time.tm_mday) + '-' \
+                + str(now_time.tm_hour) + '-' + str(now_time.tm_min) + '-' + str(now_time.tm_sec)
+writer = SummaryWriter(log_dir='tmp' + save_dir_time)
 
 
 class NetworkManager:
@@ -30,9 +33,6 @@ class NetworkManager:
         self.gpu_num = args.gpu
         self.batch_size = args.batchSize
 
-        now_time = time.localtime()
-        save_dir_time = '/' + str(now_time.tm_year) + '-' + str(now_time.tm_mon) + '-' + str(now_time.tm_mday) + '-' \
-                        + str(now_time.tm_hour) + '-' + str(now_time.tm_min) + '-' + str(now_time.tm_sec)
         self.model_save_path = args.modelSavePath + save_dir_time
         if not os.path.exists(args.modelSavePath):
             os.mkdir(self.model_save_path)

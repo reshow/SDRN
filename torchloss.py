@@ -29,10 +29,8 @@ def PRNLoss(is_foreface=False, is_weighted=False):
         def forward(self, y_true, y_pred):
             dist = torch.sqrt(torch.sum((y_true - y_pred) ** 2, 1))
             if is_weighted:
-                dist = dist * weight_mask
                 dist = dist * self.weight_mask
             if is_foreface:
-                dist = dist * (face_mask * face_mask_mean_fix_rate)
                 dist = dist * (self.face_mask * face_mask_mean_fix_rate)
             loss = torch.mean(dist)
             return loss * self.rate
