@@ -16,7 +16,7 @@ if torch.cuda.is_available():
     face_mask_3D = face_mask_3D.cuda().float()
 
 
-def PRNLoss(is_foreface=False, is_weighted=False):
+def UVLoss(is_foreface=False, is_weighted=False):
     class TemplateLoss(nn.Module):
         def __init__(self, rate=1.0):
             super(TemplateLoss, self).__init__()
@@ -53,13 +53,13 @@ def ParamLoss():
 
 def getLossFunction(loss_func_name='SquareError'):
     if loss_func_name == 'RootSquareError' or loss_func_name == 'rse':
-        return PRNLoss(is_foreface=False, is_weighted=False )
+        return UVLoss(is_foreface=False, is_weighted=False)
     elif loss_func_name == 'WeightedRootSquareError' or loss_func_name == 'wrse':
-        return PRNLoss(is_foreface=False, is_weighted=True)
+        return UVLoss(is_foreface=False, is_weighted=True)
     elif loss_func_name == 'ForefaceRootSquareError' or loss_func_name == 'frse':
-        return PRNLoss(is_foreface=True, is_weighted=False)
+        return UVLoss(is_foreface=True, is_weighted=False)
     elif loss_func_name == 'ForefaceWeightedRootSquareError' or loss_func_name == 'fwrse':
-        return PRNLoss(is_foreface=True, is_weighted=True)
+        return UVLoss(is_foreface=True, is_weighted=True)
     elif loss_func_name == 'mae':
         return ParamLoss()
     else:

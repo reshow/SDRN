@@ -64,6 +64,9 @@ class NetworkManager:
         elif args.netStructure == 'OffsetPRN':
             self.data_mode = 1
             self.net.buildOffsetPRN()
+        elif args.netStructure == 'AttentionPRN':
+            self.data_mode = 2
+            self.net.buildAttentionPRN()
 
         else:
             print('unknown network structure')
@@ -132,6 +135,9 @@ class NetworkManager:
         if self.data_mode == 1:
             train_data_loader = getDataLoader(self.train_data, mode='offset', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True)
             val_data_loader = getDataLoader(self.val_data, mode='offset', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False)
+        elif self.data_mode == 2:
+            train_data_loader = getDataLoader(self.train_data, mode='attention', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True)
+            val_data_loader = getDataLoader(self.val_data, mode='attention', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False)
         else:
             train_data_loader = getDataLoader(self.train_data, mode='posmap', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True)
             val_data_loader = getDataLoader(self.val_data, mode='posmap', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False)
@@ -167,6 +173,24 @@ class NetworkManager:
                     print('[epoch:%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch, i + 1, total_itr_num, int(time.time() - t_start), sum_loss / (i + 1)),
                           end='')
                     for j in range(5):
+                        sum_metric_loss[j] += metrics_loss[j]
+                        print(' Metrics%d: %.04f ' % (j, sum_metric_loss[j] / (i + 1)), end='')
+                elif self.data_mode == 2:
+                    x = data[0]
+                    y = [data[j] for j in range(1, 3)]
+                    for j in range(2):
+                        y[j] = y[j].to(x.device).float()
+                    optimizer.zero_grad()
+                    outputs = model(x, y[0], y[1])
+                    loss = torch.mean(outputs[0])
+                    metrics_loss = [torch.mean(outputs[j]) for j in range(1, 3)]
+                    loss.backward()
+                    optimizer.step()
+                    sum_loss += loss.item()
+                    print('\r', end='')
+                    print('[epoch:%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch, i + 1, total_itr_num, int(time.time() - t_start), sum_loss / (i + 1)),
+                          end='')
+                    for j in range(2):
                         sum_metric_loss[j] += metrics_loss[j]
                         print(' Metrics%d: %.04f ' % (j, sum_metric_loss[j] / (i + 1)), end='')
 
@@ -207,6 +231,16 @@ class NetworkManager:
                         metrics_loss = [torch.mean(outputs[j]) for j in range(1, 6)]
                         for j in range(5):
                             val_sum_metric_loss[j] += metrics_loss[j]
+                    elif self.data_mode == 2:
+                        x = data[0]
+                        x = x.to(self.net.device).float()
+                        y = [data[j] for j in range(1, 3)]
+                        for j in range(2):
+                            y[j] = y[j].to(self.net.device).float()
+                        outputs = model(x, y[0], y[1])
+                        metrics_loss = [torch.mean(outputs[j]) for j in range(1, 3)]
+                        for j in range(2):
+                            val_sum_metric_loss[j] += metrics_loss[j]
 
                     else:  # datamode==0
                         x = data[0]
@@ -221,6 +255,10 @@ class NetworkManager:
 
                 if self.data_mode == 1:
                     for j in range(5):
+                        print('val Metrics%d: %.04f ' % (j, val_sum_metric_loss[j] / len(val_data_loader)), end='')
+                    val_loss = val_sum_metric_loss[0]
+                elif self.data_mode == 2:
+                    for j in range(2):
                         print('val Metrics%d: %.04f ' % (j, val_sum_metric_loss[j] / len(val_data_loader)), end='')
                     val_loss = val_sum_metric_loss[0]
                 else:
@@ -247,6 +285,11 @@ class NetworkManager:
             if self.data_mode == 1:
                 writer.add_scalar('train/loss', sum_loss / len(train_data_loader), epoch + 1)
                 for j in range(5):
+                    writer.add_scalar('train/metrics%d' % j, sum_metric_loss[j] / len(train_data_loader), epoch + 1)
+                    writer.add_scalar('val/metrics%d' % j, val_sum_metric_loss[j] / len(val_data_loader), epoch + 1)
+            elif self.data_mode == 2:
+                writer.add_scalar('train/loss', sum_loss / len(train_data_loader), epoch + 1)
+                for j in range(2):
                     writer.add_scalar('train/metrics%d' % j, sum_metric_loss[j] / len(train_data_loader), epoch + 1)
                     writer.add_scalar('val/metrics%d' % j, val_sum_metric_loss[j] / len(val_data_loader), epoch + 1)
             else:

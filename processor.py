@@ -9,11 +9,12 @@ import ast
 import copy
 import multiprocessing
 import math
-from data import default_init_image_shape, default_cropped_image_shape, default_uvmap_shape, uv_coords, bfm
-from data import face_mask_np, face_mask_mean_fix_rate
-from data import bfm2Mesh, mesh2UVmap, UVmap2Mesh, renderMesh, getTransformMatrix
+from torchdata import default_init_image_shape, default_cropped_image_shape, default_uvmap_shape, uv_coords, bfm
+from torchdata import face_mask_np, face_mask_mean_fix_rate
+from torchdata import bfm2Mesh, mesh2UVmap, UVmap2Mesh, renderMesh, getTransformMatrix
 from augmentation import getRotateMatrix, getRotateMatrix3D, unchangeAugment
 from numpy.linalg import inv
+from attention import getImageAttentionMask
 
 
 class DataProcessor:
@@ -265,6 +266,7 @@ class DataProcessor:
         #     cropped_image = unchangeAugment(cropped_image)
         # cropped_image = gaussNoise(cropped_image)
         # 5. save files
+
         sio.savemat(self.write_dir + '/' + self.image_name + '_bbox_info.mat',
                     {'OldBbox': old_bbox, 'Bbox': bbox, 'Tform': T_2d.astype(np.float32), 'TformInv': T_2d_inv.astype(np.float32),
                      'Tform3d': T_3d.astype(np.float32), 'Kpt': new_kpt, 'OldKpt': init_kpt,

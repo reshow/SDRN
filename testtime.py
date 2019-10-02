@@ -9,6 +9,7 @@ import random
 import multiprocessing
 from augmentation import unchangeAugment, prnAugment
 import threading
+from attention import getImageAttentionMask
 
 train_data = []
 
@@ -181,9 +182,13 @@ def changeImageType(data_dir):
             file_name = file.split('.')[0]
             file_type = file.split('.')[1]
             if file_type == 'jpg':
-                image = io.imread(root + '/' + file)
-                np.save(root + '/' + str(file_name) + '.npy',image.astype(np.uint8))
-                print(i, end='\r')
+                image = np.load(root + '/' + str(file_name) + '.npy')
+                posmap = np.load(root + '/' + str(file_name) + '_uv_posmap.npy')
+                mask = getImageAttentionMask(image, posmap)
+                np.save(root + '/' + str(file_name).replace('_cropped', '_attention_mask.npy'), mask)
+
+                # np.save(root + '/' + str(file_name) + '.npy',image.astype(np.uint8))
+                print(i, file_name, end='\r')
                 i += 1
 
 

@@ -15,6 +15,7 @@ from torch.utils.data import Dataset, DataLoader
 import torch
 from torchvision import transforms
 import augmentation
+from PIL import Image
 import matplotlib.pyplot as plt
 
 #  global data
@@ -348,6 +349,7 @@ class ImageData:
         self.texture_image_path = ''
         self.bbox_info_path = ''
         self.offset_posmap_path = ''
+        self.attention_mask_path = ''
 
         self.image = None
         self.posmap = None
@@ -356,6 +358,7 @@ class ImageData:
         self.S = None
         self.T = None
         self.R = None
+        self.attention_mask = None
 
     def readPath(self, image_dir):
         image_name = image_dir.split('/')[-1]
@@ -369,6 +372,8 @@ class ImageData:
 
         self.bbox_info_path = image_dir + '/' + image_name + '_bbox_info.mat'
         self.offset_posmap_path = image_dir + '/' + image_name + '_offset_posmap.npy'
+
+        self.attention_mask_path = image_dir + '/' + image_name + '_attention_mask.npy'
         # TODO:read bbox and tform
 
     def readFile(self, mode='posmap'):
@@ -380,6 +385,10 @@ class ImageData:
             self.posmap = np.load(self.cropped_posmap_path).astype(np.float16)
             self.offset_posmap = np.load(self.offset_posmap_path).astype(np.float16)
             self.bbox_info = sio.loadmat(self.bbox_info_path)
+        elif mode == 'attention':
+            self.image = np.load(self.cropped_image_path).astype(np.uint8)
+            self.posmap = np.load(self.cropped_posmap_path).astype(np.float16)
+            self.attention_mask = np.load(self.attention_mask_path).astype(np.uint8)
         else:
             pass
 
@@ -498,6 +507,26 @@ class DataGenerator(Dataset):
             offset = self.toTensor(offset)
 
             return image, pos, offset, R_flatten, T_flatten, S
+
+        elif self.mode == 'attention':
+            image = (self.all_image_data[index].image / 255.0).astype(np.float32)
+            pos = self.all_image_data[index].posmap.astype(np.float32)
+            attention_mask = self.all_image_data[index].attention_mask.astype(np.float32)
+            if self.is_aug:
+                image, pos = augmentation.torchDataAugment(image, pos)
+                image = (image * 255.0).astype(np.uint8)
+                image = self.augment(image)
+                # image=augmentation.prnAugment(image)
+                # #image = self.no_augment(image)
+            else:
+                image = self.no_augment(image)
+            pos = pos / 280.
+            pos = self.toTensor(pos)
+            attention_mask = Image.fromarray(attention_mask)
+            attention_mask = attention_mask.resize((64, 64),Image.BILINEAR)
+            attention_mask = np.array(attention_mask)
+            attention_mask = self.toTensor(attention_mask)
+            return image, pos, attention_mask
 
         else:
             return None
