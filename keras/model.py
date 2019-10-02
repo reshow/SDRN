@@ -1,19 +1,15 @@
 import keras
 import tensorflow as tf
-import numpy as np
 from keras.models import Model
-from keras.layers import Input, Dense, Dropout, BatchNormalization, Conv2D, MaxPooling2D, AveragePooling2D, concatenate, \
-    Activation, ZeroPadding2D, Conv2DTranspose, regularizers, Flatten
-from keras.layers import Add, GlobalMaxPooling2D
+from keras.layers import Input, Dense, Dropout, Conv2D, MaxPooling2D, AveragePooling2D, Activation, ZeroPadding2D, Conv2DTranspose, regularizers, Flatten
 from keras.layers.core import Lambda
-from keras.layers import add, Flatten, Multiply
+from keras.layers import add, Flatten
 from keras.initializers import glorot_uniform
-from keras.callbacks import ModelCheckpoint, Callback, History
 from keras.optimizers import Adam
 from keras.utils import multi_gpu_model
 from loss import getErrorFunction, getLossFunction
 
-from module import DistillationModule, Conv2d_AC_BN, ResBlock, \
+from keras.module import DistillationModule, Conv2d_AC_BN, ResBlock, \
     CbamResBlock, Conv2d_BN_AC, PRNResBlock, Conv2d_Transpose_BN_AC, RPFOModule, DecoderModule
 
 

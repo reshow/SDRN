@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from skimage import io, transform
 # from test import readUVKpt
 # import open3d as o3d
-from data import UVmap2Mesh, uv_kpt, bfm2Mesh, getLandmark, mesh2UVmap, bfm
+from torchdata import UVmap2Mesh, uv_kpt, bfm2Mesh, getLandmark, mesh2UVmap, bfm
 
 
 def showLandmark(image, kpt):

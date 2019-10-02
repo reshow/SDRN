@@ -3,7 +3,7 @@ import numpy as np
 import scipy.io as sio
 from skimage import io, transform
 import math
-from data import ImageData
+from torchdata import ImageData
 import os
 import random
 import multiprocessing
