@@ -144,7 +144,7 @@ class RPFOModule(nn.Module):
 
         pos = pos.reshape((pos.shape[0], 256, 256, 3))
         pos = pos.permute(0, 3, 1, 2)
-        pos = pos / 256.
+        pos = pos / 280.
         return pos
 
 

@@ -454,6 +454,7 @@ class DataGenerator(Dataset):
                     rot_angle = rot_angle / 180. * np.pi
                     R_3d, R_3d_inv = augmentation.getRotateMatrix3D(rot_angle, image.shape)
                     trans_mat = R_3d.dot(trans_mat)
+                    image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
                 image, pos = augmentation.torchDataAugment(image, pos, is_rotate=False)
                 image = (image * 255.0).astype(np.uint8)
                 image = self.augment(image)
@@ -492,7 +493,7 @@ class DataGenerator(Dataset):
             T_flatten = torch.from_numpy(T_flatten)
             S = torch.tensor(S)
 
-            pos = pos / 256.
+            pos = pos / 280.
             offset = offset / 4.
             pos = self.toTensor(pos)
             offset = self.toTensor(offset)

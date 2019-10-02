@@ -165,8 +165,8 @@ class OffsetPRN(nn.Module):
         r, t, s = self.regressor(x)
         offset = self.decoder(x)
         offset = offset * 2 - 1
-        posmap = self.rebuilder(offset, r, t, s)
-        # posmap = self.rebuilder(offset, gt_r, gt_t, torch.unsqueeze(gt_s, 1))
+        # posmap = self.rebuilder(offset, r, t, s)
+        posmap = self.rebuilder(offset, gt_r, gt_t, torch.unsqueeze(gt_s, 1))
 
         loss, metrics_posmap, metrics_offset, metrics_r, metrics_t, metrics_s = self.loss(posmap, offset, r, t, s,
                                                                                           gt_posmap, gt_offset, gt_r, gt_t, gt_s)
