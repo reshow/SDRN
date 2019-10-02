@@ -126,12 +126,11 @@ class RPFOModule(nn.Module):
     def forward(self, Offset, R, T, S):
         R = R * np.pi
         Sn = -S
-        # s = torch.cat((S, Sn, S), 1)
-        # s = s.unsqueeze(1)
         s = torch.stack((S, Sn, S), 2)
         s = s.repeat(1, 3, 1)
         s = s * self.S_scale
         r = getRotationTensor(R)
+        # r = R.reshape((R.shape[0], 3, 3))
         r = r * s
         r = r.permute(0, 2, 1)
         t = T * self.T_scale
@@ -141,7 +140,6 @@ class RPFOModule(nn.Module):
 
         outpos = pos.clone()
         for i in range(pos.shape[0]):
-            # pos[i] = pos[i].mm(r[i]) + t[i]
             pos[i] = outpos[i].mm(r[i]) + t[i]
 
         pos = pos.reshape((pos.shape[0], 256, 256, 3))

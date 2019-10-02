@@ -466,17 +466,20 @@ class DataGenerator(Dataset):
             R = trans_mat[0:3, 0:3]
             R = R.dot(np.diagflat([1 / S, -1 / S, 1 / S]))
             R_flatten = estimateRotationAngle(R)
-
-            T_flatten = np.reshape(trans_mat[0:3, 3], (3,))
-            S = S * 5e2
-            T_flatten = T_flatten / 300
             R_flatten = np.reshape((np.array(R_flatten)), (3,)) / np.pi
-            # print(R_flatten)
             for i in range(3):
                 while R_flatten[i] < -1:
                     R_flatten[i] += 2
                 while R_flatten[i] > 1:
                     R_flatten[i] -= 2
+            # R_flatten = np.reshape(R, (9,))
+
+            T_flatten = np.reshape(trans_mat[0:3, 3], (3,))
+            S = S * 5e2
+            T_flatten = T_flatten / 300
+
+            # print(R_flatten)
+
             # print(R_flatten)
             if S > 1:
                 print('too large scale', S)

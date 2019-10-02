@@ -16,7 +16,9 @@ from torchmodel import TorchNet
 from torchdata import getDataLoader, DataGenerator
 from torchloss import getErrorFunction, getLossFunction
 import torch
-import tensorboard
+from torch.utils.tensorboard import SummaryWriter
+
+writer = SummaryWriter(log_dir='tmp')
 
 
 class NetworkManager:
@@ -27,9 +29,16 @@ class NetworkManager:
 
         self.gpu_num = args.gpu
         self.batch_size = args.batchSize
-        self.model_save_path = args.modelSavePath
+
+        now_time = time.localtime()
+        save_dir_time = '/' + str(now_time.tm_year) + '-' + str(now_time.tm_mon) + '-' + str(now_time.tm_mday) + '-' \
+                        + str(now_time.tm_hour) + '-' + str(now_time.tm_min) + '-' + str(now_time.tm_sec)
+        self.model_save_path = args.modelSavePath + save_dir_time
+        if not os.path.exists(args.modelSavePath):
+            os.mkdir(self.model_save_path)
         if not os.path.exists(self.model_save_path):
             os.mkdir(self.model_save_path)
+
         self.epoch = args.epoch
         self.start_epoch = args.startEpoch
 
@@ -183,9 +192,9 @@ class NetworkManager:
             print("\nWaiting Test!", end='\r')
             with torch.no_grad():
                 if self.data_mode == 1:
-                    sum_metric_loss = np.zeros(5)
+                    val_sum_metric_loss = np.zeros(5)
                 else:
-                    sum_metric_loss = 0.0
+                    val_sum_metric_loss = 0.0
                 model.eval()
                 for data in val_data_loader:
                     if self.data_mode == 1:
@@ -197,7 +206,7 @@ class NetworkManager:
                         outputs = model(x, y[0], y[1], y[2], y[3], y[4])
                         metrics_loss = [torch.mean(outputs[j]) for j in range(1, 6)]
                         for j in range(5):
-                            sum_metric_loss[j] += metrics_loss[j]
+                            val_sum_metric_loss[j] += metrics_loss[j]
 
                     else:  # datamode==0
                         x = data[0]
@@ -208,14 +217,15 @@ class NetworkManager:
                         outputs = model(x, y)
                         metrics_loss = outputs[1]
                         metrics_loss = torch.mean(metrics_loss)
-                        sum_metric_loss += metrics_loss
+                        val_sum_metric_loss += metrics_loss
 
                 if self.data_mode == 1:
                     for j in range(5):
-                        print('val Metrics%d: %.04f ' % (j, sum_metric_loss[j] / len(val_data_loader)), end='')
-                    sum_metric_loss = sum_metric_loss[0]
+                        print('val Metrics%d: %.04f ' % (j, val_sum_metric_loss[j] / len(val_data_loader)), end='')
+                    val_loss = val_sum_metric_loss[0]
                 else:
-                    print('val metrics: %.4f' % (sum_metric_loss / len(val_data_loader)), end='')
+                    val_loss = val_sum_metric_loss
+                    print('val metrics: %.4f' % (val_loss / len(val_data_loader)), end='')
 
                 print('\nSaving model......', end='\r')
                 if self.gpu_num > 1:
@@ -223,15 +233,26 @@ class NetworkManager:
                 else:
                     torch.save(model.state_dict(), '%s/net_%03d.pth' % (self.model_save_path, epoch + 1))
                 # save best
-                if sum_metric_loss / len(val_data_loader) < best_acc:
-                    print('new best %.4f improved from %.4f' % (sum_metric_loss / len(val_data_loader), best_acc))
-                    best_acc = sum_metric_loss / len(val_data_loader)
+                if val_loss / len(val_data_loader) < best_acc:
+                    print('new best %.4f improved from %.4f' % (val_loss / len(val_data_loader), best_acc))
+                    best_acc = val_loss / len(val_data_loader)
                     if self.gpu_num > 1:
                         torch.save(model.module.state_dict(), '%s/best.pth' % self.model_save_path)
                     else:
                         torch.save(model.state_dict(), '%s/best.pth' % self.model_save_path)
                 else:
                     print('not improved from %.4f' % best_acc)
+
+            # write log
+            if self.data_mode == 1:
+                writer.add_scalar('train/loss', sum_loss / len(train_data_loader), epoch + 1)
+                for j in range(5):
+                    writer.add_scalar('train/metrics%d' % j, sum_metric_loss[j] / len(train_data_loader), epoch + 1)
+                    writer.add_scalar('val/metrics%d' % j, val_sum_metric_loss[j] / len(val_data_loader), epoch + 1)
+            else:
+                writer.add_scalar('train/loss', sum_loss / len(train_data_loader), epoch + 1)
+                writer.add_scalar('train/metrics', sum_metric_loss / len(train_data_loader), epoch + 1)
+                writer.add_scalar('val/metrics', val_sum_metric_loss / len(val_data_loader), epoch + 1)
 
     def test(self, error_func_list=None, is_visualize=False):
         total_task = len(self.test_data)
