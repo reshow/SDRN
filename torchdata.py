@@ -16,7 +16,6 @@ import torch
 from torchvision import transforms
 import augmentation
 import matplotlib.pyplot as plt
-import visualize
 
 #  global data
 bfm = MorphabelModel('data/Out/BFM.mat')

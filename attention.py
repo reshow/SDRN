@@ -2,21 +2,21 @@ import numpy as np
 import scipy.io as sio
 import matplotlib.pyplot as plt
 from skimage import io
-from torchdata import UVmap2Mesh, uv_kpt, bfm2Mesh, getLandmark, mesh2UVmap, bfm
+from torchdata import UVmap2Mesh, uv_kpt, bfm2Mesh, getLandmark, mesh2UVmap, bfm, face_mask_np
 from visualize import showLandmark
+from faceutil import mesh
 
 
 def getImageAttentionMask(image, posmap, mode='hard'):
     """
     需要加一个正态分布吗？
     """
-    [image_h, image_w, image_c] = image.shape()
-    kpt = getLandmark(posmap)
-    left = np.min(kpt[:, 0])
-    right = np.max(kpt[:, 0])
-    top = np.min(kpt[:, 1])
-    bottom = np.max(kpt[:, 1])
-    showLandmark(image, kpt)
+    [height, width, channel] = image.shape
+    tex = np.zeros((height, width, channel))
+    tex[:, :, :] = 2
 
-    mask = np.zeros((image_h, image_w)).astype(np.float32)
-    mask[left:right, top:bottom] = 1.0
+    mesh_info = UVmap2Mesh(posmap, tex, True)
+    mesh_image = mesh.render.render_colors(mesh_info['vertices'], mesh_info['triangles'], mesh_info['colors'],
+                                           height, width, channel)
+    mask = np.clip(mesh_image, 0, 1).astype(np.float32)
+    return mask
