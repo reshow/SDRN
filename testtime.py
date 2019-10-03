@@ -7,7 +7,7 @@ from torchdata import ImageData
 import os
 import random
 import multiprocessing
-from augmentation import unchangeAugment, prnAugment
+from augmentation import prnAugment_keras
 import threading
 from attention import getImageAttentionMask
 
@@ -90,7 +90,7 @@ class FitGenerator:
                 # image = transform.resize(image, (self.image_height, self.image_width, self.image_channel))
                 # image = unchangeAugment(image)
                 if self.augment:
-                    image = prnAugment(image)
+                    image = prnAugment_keras(image)
                 x.append(image)
             if self.read_posmap:
                 pos_path = self.all_image_data[index].cropped_posmap_path

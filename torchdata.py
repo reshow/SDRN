@@ -427,8 +427,11 @@ class DataGenerator(Dataset):
         # mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
         self.no_augment = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])])
 
+        i = 0
         for data in self.all_image_data:
             data.readFile(mode=self.mode)
+            print(i, end='\r')
+            i += 1
 
     def __getitem__(self, index):
         if self.mode == 'posmap':
@@ -436,7 +439,7 @@ class DataGenerator(Dataset):
             image = (self.all_image_data[index].image / 255.0).astype(np.float32)
             pos = self.all_image_data[index].posmap.astype(np.float32)
             if self.is_aug:
-                image, pos = augmentation.torchDataAugment(image, pos)
+                image, pos = augmentation.prnAugment_torch(image, pos)
                 image = (image * 255.0).astype(np.uint8)
                 image = self.augment(image)
                 # image=augmentation.prnAugment(image)
@@ -463,7 +466,7 @@ class DataGenerator(Dataset):
                     R_3d, R_3d_inv = augmentation.getRotateMatrix3D(rot_angle, image.shape)
                     trans_mat = R_3d.dot(trans_mat)
                     image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
-                image, pos = augmentation.torchDataAugment(image, pos, is_rotate=False)
+                image, pos = augmentation.prnAugment_torch(image, pos, is_rotate=False)
                 image = (image * 255.0).astype(np.uint8)
                 image = self.augment(image)
                 # 　image = self.no_augment(image)
@@ -513,7 +516,7 @@ class DataGenerator(Dataset):
             pos = self.all_image_data[index].posmap.astype(np.float32)
             attention_mask = self.all_image_data[index].attention_mask.astype(np.float32)
             if self.is_aug:
-                image, pos = augmentation.torchDataAugment(image, pos)
+                image, pos, attention_mask = augmentation.attentionAugment_torch(image, pos, attention_mask)
                 image = (image * 255.0).astype(np.uint8)
                 image = self.augment(image)
                 # image=augmentation.prnAugment(image)
@@ -523,7 +526,7 @@ class DataGenerator(Dataset):
             pos = pos / 280.
             pos = self.toTensor(pos)
             attention_mask = Image.fromarray(attention_mask)
-            attention_mask = attention_mask.resize((64, 64),Image.BILINEAR)
+            attention_mask = attention_mask.resize((64, 64), Image.BILINEAR)
             attention_mask = np.array(attention_mask)
             attention_mask = self.toTensor(attention_mask)
             return image, pos, attention_mask

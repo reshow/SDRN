@@ -152,6 +152,8 @@ class NetworkManager:
             t_start = time.time()
             if self.data_mode == 1:
                 sum_metric_loss = np.zeros(5)
+            elif self.data_mode == 2:
+                sum_metric_loss = np.zeros(2)
             else:
                 sum_metric_loss = 0.0
             for i, data in enumerate(train_data_loader):
@@ -217,6 +219,8 @@ class NetworkManager:
             with torch.no_grad():
                 if self.data_mode == 1:
                     val_sum_metric_loss = np.zeros(5)
+                elif self.data_mode == 2:
+                    val_sum_metric_loss = np.zeros(2)
                 else:
                     val_sum_metric_loss = 0.0
                 model.eval()

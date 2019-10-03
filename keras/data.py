@@ -467,7 +467,7 @@ class FitGenerator:
                 image = image / 255.
             else:
                 image = self.all_image_data[index].image / 255.
-            image = augmentation.prnAugment(image)
+            image = augmentation.prnAugment_keras(image)
 
             pos_path = self.all_image_data[index].cropped_posmap_path
             pos = np.load(pos_path)
@@ -539,7 +539,7 @@ class FitGenerator:
                 image = image / 255.
             else:
                 image = self.all_image_data[index].image / 255.
-            image = augmentation.prnAugment(image)
+            image = augmentation.prnAugment_keras(image)
 
             if self.all_image_data[index].posmap is None:
                 pos_path = self.all_image_data[index].cropped_posmap_path

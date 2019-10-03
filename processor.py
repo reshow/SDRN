@@ -12,7 +12,7 @@ import math
 from torchdata import default_init_image_shape, default_cropped_image_shape, default_uvmap_shape, uv_coords, bfm
 from torchdata import face_mask_np, face_mask_mean_fix_rate
 from torchdata import bfm2Mesh, mesh2UVmap, UVmap2Mesh, renderMesh, getTransformMatrix
-from augmentation import getRotateMatrix, getRotateMatrix3D, unchangeAugment
+from augmentation import getRotateMatrix, getRotateMatrix3D
 from numpy.linalg import inv
 from attention import getImageAttentionMask
 
@@ -165,8 +165,6 @@ class DataProcessor:
             new_kpt = []
             init_kpt = []
 
-        if self.is_augment:
-            cropped_image = unchangeAugment(cropped_image)
         # from datavisualize import showMesh, show
         # show([uv_position_map, None, cropped_image], False, 'uvmap')
         # 5. save files

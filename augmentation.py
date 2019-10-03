@@ -3,7 +3,6 @@ from skimage import io, transform
 import math
 import copy
 from PIL import ImageEnhance, ImageOps, ImageFile, Image
-from imgaug import augmenters as iaa
 import cv2
 
 
@@ -123,8 +122,36 @@ def randomErase(x, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 / 0.3, v_l=0, v_
             out[top:min(top + h, img_h), left:min(left + w, img_w), :0] = c0
             out[top:min(top + h, img_h), left:min(left + w, img_w), :1] = c1
             out[top:min(top + h, img_h), left:min(left + w, img_w), :2] = c2
-
     return out
+
+
+def randomMaskErase(x, attention, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 / 0.3, v_l=0, v_h=1.0):
+    [img_h, img_w, img_c] = x.shape
+    out = x.copy()
+    out_attention = attention.copy()
+    num = np.random.randint(1, max_num)
+
+    for i in range(num):
+        s = np.random.uniform(s_l, s_h) * img_h * img_w
+        r = np.random.uniform(r_1, r_2)
+        w = int(np.sqrt(s / r))
+        h = int(np.sqrt(s * r))
+        left = np.random.randint(0, img_w)
+        top = np.random.randint(0, img_h)
+        out_attention[top:min(top + h, img_h), left:min(left + w, img_w)] = 0
+        if np.random.rand() < 0.25:
+            c = np.random.uniform(v_l, v_h)
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
+        else:
+            # c = np.random.random((min(top + h, img_h) - top, min(left + w, img_w) - left, 3))
+            # out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
+            c0 = np.random.uniform(v_l, v_h)
+            c1 = np.random.uniform(v_l, v_h)
+            c2 = np.random.uniform(v_l, v_h)
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :0] = c0
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :1] = c1
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :2] = c2
+    return out, out_attention
 
 
 def channelScale(x, min_rate=0.6, max_rate=1.4):
@@ -135,48 +162,8 @@ def channelScale(x, min_rate=0.6, max_rate=1.4):
     return out
 
 
-# useless
-aug_seq = iaa.Sequential([
-    iaa.SomeOf((0, 5),
-               [
-                   # 用高斯模糊，均值模糊，中值模糊中的一种增强。注意OneOf的用法
-                   iaa.OneOf([
-                       iaa.GaussianBlur((0, 3.0)),
-                       iaa.AverageBlur(k=(2, 7)),  # 核大小2~7之间，k=((5, 7), (1, 3))时，核高度5~7，宽度1~3
-                       iaa.MedianBlur(k=(3, 11)),
-                   ]),
-
-                   # 锐化处理
-                   iaa.Sharpen(alpha=(0, 1.0), lightness=(0.75, 1.5)),
-
-                   # 加入高斯噪声
-                   iaa.AdditiveGaussianNoise(
-                       loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5
-                   ),
-
-                   # 5%的概率反转像素的强度，即原来的强度为v那么现在的就是255-v
-                   iaa.Invert(0.05, per_channel=True),
-
-                   # 每个像素随机加减-10到10之间的数
-                   iaa.Add((-10 / 255., 10 / 255.), per_channel=0.5),
-
-                   # 像素乘上0.5或者1.5之间的数字.
-                   iaa.Multiply((0.5, 1.5), per_channel=0.5),
-
-                   # 将整个图像的对比度变为原来的一半或者二倍
-                   iaa.ContrastNormalization((0.3, 2.0), per_channel=0.5),
-
-                   # 将RGB变成灰度图然后乘alpha加在原图上
-                   iaa.Grayscale(alpha=(0.0, 1.0)),
-               ],
-
-               random_order=True  # 随机的顺序把这些操作用在图像上
-               )
-])
-
-
 # used in keras version
-def prnAugment(x):
+def prnAugment_keras(x):
     if np.random.rand() > 0.75:
         x = randomErase(x)
     if np.random.rand() > 0.5:
@@ -184,18 +171,7 @@ def prnAugment(x):
     return x
 
 
-# useless
-def unchangeAugment(x):
-    if np.random.rand() > 0.5:
-        x = randomColor(x)
-    if np.random.rand() > 0.5:
-        x = randomErase(x)
-    if np.random.rand() > 0.5:
-        x = aug_seq.augment_image((x * 255.).astype(np.uint8))
-    return x
-
-
-def torchDataAugment(x, y, is_rotate=True):
+def prnAugment_torch(x, y, is_rotate=True):
     if is_rotate:
         if np.random.rand() > 0.75:
             x, y = rotateData(x, y, 90)
@@ -208,6 +184,19 @@ def torchDataAugment(x, y, is_rotate=True):
     return x, y
 
 
+def attentionAugment_torch(x, y, attention, is_rotate=True):
+    if is_rotate:
+        if np.random.rand() > 0.75:
+            x, y = rotateData(x, y, 90)
+    if np.random.rand() > 0.75:
+        x, attention = randomMaskErase(x, attention)
+    if np.random.rand() > 0.75:
+        x = channelScale(x)
+    if np.random.rand() > 0.75:
+        x = gaussNoise(x)
+    return x, y, attention
+
+
 if __name__ == '__main__':
     import time
 
@@ -218,6 +207,6 @@ if __name__ == '__main__':
 
     t1 = time.clock()
     for i in range(1000):
-        xr, yr = torchDataAugment(x, y)
+        xr, yr = prnAugment_torch(x, y)
 
     print(time.clock() - t1)

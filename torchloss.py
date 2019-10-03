@@ -3,7 +3,7 @@ from skimage import io, transform
 from torchdata import uv_kpt
 from torchdata import face_mask_np, face_mask_mean_fix_rate, toTensor
 import torch
-import torch.functional as F
+import torch.nn.functional as F
 import torch.nn as nn
 
 weight_mask_np = io.imread('uv-data/uv_weight_mask.png') / 255.
@@ -51,6 +51,17 @@ def ParamLoss():
     return TemplateLoss
 
 
+def MaskLoss():
+    class TemplateLoss(nn.Module):
+        def __init__(self, rate=1.0):
+            super(TemplateLoss, self).__init__()
+            self.rate = rate
+
+        def forward(self, y_true, y_pred):
+            return F.binary_cross_entropy(y_pred, y_true)
+    return  TemplateLoss
+
+
 def getLossFunction(loss_func_name='SquareError'):
     if loss_func_name == 'RootSquareError' or loss_func_name == 'rse':
         return UVLoss(is_foreface=False, is_weighted=False)
@@ -62,6 +73,8 @@ def getLossFunction(loss_func_name='SquareError'):
         return UVLoss(is_foreface=True, is_weighted=True)
     elif loss_func_name == 'mae':
         return ParamLoss()
+    elif loss_func_name == 'bce' or loss_func_name == 'BinaryCrossEntropy':
+        return MaskLoss()
     else:
         print('unknown loss:', loss_func_name)
 
