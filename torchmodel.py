@@ -178,7 +178,7 @@ class AttentionLoss(nn.Module):
         super(AttentionLoss, self).__init__()
         self.criterion0 = getLossFunction('fwrse')()
         self.metrics0 = getLossFunction('frse')()
-        self.criterion1 = getLossFunction('bce')(0.1)
+        self.criterion1 = getLossFunction('bce')()
         self.metrics1 = getLossFunction('mae')()
 
     def forward(self, posmap, mask, gt_posmap, gt_mask):

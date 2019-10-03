@@ -282,7 +282,15 @@ def getTransformMatrix(s, angles, t, height):
     return T.astype(np.float32)
 
 
-def getRotationMatrixFromAxisAngle(x, y, z):
+def isMatSame(r1, r2, thresh=1e-1):
+    diff = np.abs(r1 - r2)
+    if (diff < thresh).all():
+        return True
+    else:
+        return False
+
+
+def angle2Matrix(x, y, z):
     Rx = np.array([[1, 0, 0],
                    [0, cos(x), sin(x)],
                    [0, -sin(x), cos(x)]])
@@ -299,37 +307,60 @@ def getRotationMatrixFromAxisAngle(x, y, z):
     return R
 
 
-def isMatSame(r1, r2, thresh=1e-1):
-    diff = np.abs(r1 - r2)
-    if (diff < thresh).all():
-        return True
-    else:
-        return False
+def angle2Quaternion(y, p, r):
+    # yaw pitch roll = x y z
+    Z = sin(r / 2) * cos(p / 2) * cos(y / 2) - cos(r / 2) * sin(p / 2) * sin(y / 2)
+    Y = cos(r / 2) * sin(p / 2) * cos(y / 2) + sin(r / 2) * cos(p / 2) * sin(y / 2)
+    X = cos(r / 2) * cos(p / 2) * sin(y / 2) - sin(r / 2) * sin(p / 2) * cos(y / 2)
+    W = cos(r / 2) * cos(p / 2) * cos(y / 2) + sin(r / 2) * sin(p / 2) * sin(y / 2)
+
+    norm_factor = np.sqrt(W * W + X * X + Y * Y + Z * Z)
+    W, X, Y, Z = (W / norm_factor, X / norm_factor, Y / norm_factor, Z / norm_factor)
+    return W, X, Y, Z
 
 
-def estimateRotationAngle(rot_mat):
-    sy = np.sqrt(rot_mat[0, 0] * rot_mat[0, 0] + rot_mat[0, 1] * rot_mat[0, 1])
+def matrix2Quaternion(R):
+    q0 = np.sqrt(1 + R[0, 0] + R[1, 1] + R[2, 2]) / 2
+    if q0 < 1e-8:
+        q0 = 1e-8
+    q1 = (R[1, 2] - R[2, 1]) / (4 * q0)
+    q2 = (R[2, 0] - R[0, 2]) / (4 * q0)
+    q3 = (R[0, 1] - R[1, 0]) / (4 * q0)
+    norm_factor = np.sqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3)
+    q0, q1, q2, q3 = (q0 / norm_factor, q1 / norm_factor, q2 / norm_factor, q3 / norm_factor)
+    return q0, q1, q2, q3
 
-    if sy > 1e-6:
+
+def matrix2Angle(R):
+    cosy = np.sqrt(R[0, 0] * R[0, 0] + R[0, 1] * R[0, 1])
+
+    if cosy > 1e-6 or cosy < -1e-6:
         # not singular
-        x = atan2(rot_mat[1, 2], rot_mat[2, 2])
-        y = atan2(-rot_mat[0, 2], sy)
-        z = atan2(rot_mat[0, 1], rot_mat[0, 0])
+        x = atan2(R[1, 2], R[2, 2])
+        y = atan2(-R[0, 2], cosy)
+        z = atan2(R[0, 1], R[0, 0])
     else:
-        x = atan2(-rot_mat[1, 2], rot_mat[2, 2])
-        y = atan2(-rot_mat[0, 2], sy)
-        z = 0
-    if rot_mat[1, 0] > 1 - 1e-2:
-        x = 0
-        y = atan2(-rot_mat[0, 2], sy)
-        z = atan2(rot_mat[0, 1], rot_mat[0, 0])
+        if R[0, 2] > 0.9:
+            x = atan2(-R[1, 2], -R[2, 2])
+            y = -np.pi / 2
+        else:
+            x = atan2(R[1, 2], R[2, 2])
+            y = np.pi / 2
+        z = 0  # can be any angle
 
-    maybe_R = getRotationMatrixFromAxisAngle(x, y, z)
-    if isMatSame(rot_mat, maybe_R):
-        return x, y, z
+    # maybe_R = getRotationMatrixFromAxisAngle(x, y, z)
+    # if isMatSame(rot_mat, maybe_R):
+    return x, y, z
 
-    # print(rot_mat)
-    return 0, 0, 0
+
+def quaternion2Matrix(Q):
+    q0, q1, q2, q3 = Q
+    norm_factor = np.sqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3)
+    q0, q1, q2, q3 = (q0 / norm_factor, q1 / norm_factor, q2 / norm_factor, q3 / norm_factor)
+    R = [[q0 ** 2 + q1 ** 2 - q2 ** 2 - q3 ** 2, 2 * (q1 * q2 + q0 * q3), 2 * (q1 * q3 - q0 * q2)],
+         [2 * (q1 * q2 - q0 * q3), q0 ** 2 - q1 ** 2 + q2 ** 2 - q3 ** 2, 2 * (q0 * q1 + q2 * q3)],
+         [2 * (q0 * q2 + q1 * q3), 2 * (q2 * q3 - q0 * q1), q0 ** 2 - q1 ** 2 - q2 ** 2 + q3 ** 2]]
+    return np.array(R)
 
 
 def getMeanPosmap():
@@ -477,7 +508,7 @@ class DataGenerator(Dataset):
             S = np.sqrt(np.sum(t0 * t0))
             R = trans_mat[0:3, 0:3]
             R = R.dot(np.diagflat([1 / S, -1 / S, 1 / S]))
-            R_flatten = estimateRotationAngle(R)
+            R_flatten = matrix2Angle(R)
             R_flatten = np.reshape((np.array(R_flatten)), (3,)) / np.pi
             for i in range(3):
                 while R_flatten[i] < -1:
