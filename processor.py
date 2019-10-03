@@ -264,6 +264,7 @@ class DataProcessor:
         #     cropped_image = unchangeAugment(cropped_image)
         # cropped_image = gaussNoise(cropped_image)
         # 5. save files
+        attention_mask = getImageAttentionMask(cropped_image, uv_position_map)
 
         sio.savemat(self.write_dir + '/' + self.image_name + '_bbox_info.mat',
                     {'OldBbox': old_bbox, 'Bbox': bbox, 'Tform': T_2d.astype(np.float32), 'TformInv': T_2d_inv.astype(np.float32),
@@ -273,6 +274,7 @@ class DataProcessor:
         np.save(self.write_dir + '/' + self.image_name + '_offset_posmap.npy', uv_offset_map.astype(np.float32))
         io.imsave(self.write_dir + '/' + self.image_name + '_cropped.jpg', (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
         np.save(self.write_dir + '/' + self.image_name + '_cropped.npy', (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
+        np.save(self.write_dir + '/' + self.image_name + '_attention_mask.npy', attention_mask.astype(np.uint8))
 
     def processImage(self, image_path, output_dir):
         self.initialize(image_path, output_dir)
@@ -311,7 +313,6 @@ class DataProcessor:
         self.uv_texture_map = None
         self.mesh_info = None
 
-
 def workerProcess(image_paths, output_dirs, id, conf):
     print('worker:', id, 'start. task number:', len(image_paths))
     data_processor = DataProcessor(bbox_extend_rate=conf.bboxExtendRate, marg_rate=conf.margin, is_pt3d=conf.isOldKpt,
@@ -322,7 +323,6 @@ def workerProcess(image_paths, output_dirs, id, conf):
         # output_list[id] = "worker {} task {}/{}  {}".format(str(id), str(i), str(len(image_paths)), image_paths[i])
         data_processor.processImage(image_paths[i], output_dirs[i])
     print('worker:', id, 'end')
-
 
 def multiProcess(conf):
     worker_num = conf.thread
@@ -367,41 +367,40 @@ def multiProcess(conf):
             jobs.append(p)
             p.start()
 
+    if __name__ == "__main__":
+        # showModel("data/images/AFLW2000/image00107.jpg", "data/images/AFLW2000/image00107.mat", True)
+        # multiProcess("data/images/300W-3D", "data/images/300W-3D-crop", worker_num=8)
+        # multiProcess("data/images/AFLW2000", "data/images/AFLW2000-crop", worker_num=2)
+        # multiProcess("data/images/300W_LP", "data/images/300W_LP-crop", worker_num=32)
+        parser = argparse.ArgumentParser(
+            description='data preprocess arguments')
 
-if __name__ == "__main__":
-    # showModel("data/images/AFLW2000/image00107.jpg", "data/images/AFLW2000/image00107.mat", True)
-    # multiProcess("data/images/300W-3D", "data/images/300W-3D-crop", worker_num=8)
-    # multiProcess("data/images/AFLW2000", "data/images/AFLW2000-crop", worker_num=2)
-    # multiProcess("data/images/300W_LP", "data/images/300W_LP-crop", worker_num=32)
-    parser = argparse.ArgumentParser(
-        description='data preprocess arguments')
+        parser.add_argument('-i', '--inputDir', default='data/images/AFLW2000', type=str,
+                            help='path to the input directory, where input images are stored.')
+        parser.add_argument('-o', '--outputDir', default='data/images/AFLW2000-crop', type=str,
+                            help='path to the output directory, where results(npy,cropped jpg) will be stored.')
+        parser.add_argument('-s', '--isSingle', default=False, type=ast.literal_eval,
+                            help='processs one image or all images in a directory')
+        parser.add_argument('-t', '--thread', default='1', type=int,
+                            help='thread number for multiprocessing')
 
-    parser.add_argument('-i', '--inputDir', default='data/images/AFLW2000', type=str,
-                        help='path to the input directory, where input images are stored.')
-    parser.add_argument('-o', '--outputDir', default='data/images/AFLW2000-crop', type=str,
-                        help='path to the output directory, where results(npy,cropped jpg) will be stored.')
-    parser.add_argument('-s', '--isSingle', default=False, type=ast.literal_eval,
-                        help='processs one image or all images in a directory')
-    parser.add_argument('-t', '--thread', default='1', type=int,
-                        help='thread number for multiprocessing')
+        parser.add_argument('-f', '--isFull', default=False, type=ast.literal_eval,
+                            help='whether to process init image')
+        parser.add_argument('-v', '--isVisualize', default=False, type=ast.literal_eval,
+                            help='whether to save images of some data such as texture')
 
-    parser.add_argument('-f', '--isFull', default=False, type=ast.literal_eval,
-                        help='whether to process init image')
-    parser.add_argument('-v', '--isVisualize', default=False, type=ast.literal_eval,
-                        help='whether to save images of some data such as texture')
+        parser.add_argument('-b', '--bboxExtendRate', default=1.5, type=float,
+                            help='extend rate of bounding box of cropped face')
+        parser.add_argument('-m', '--margin', default=0.1, type=float,
+                            help='margin for the bbox')
+        parser.add_argument('-a', '--isAugment', default=False, type=ast.literal_eval,
+                            help='do augmentation or not')
+        parser.add_argument('--isOldKpt', default=False, type=ast.literal_eval,
+                            help='for 300W there is no pt68_3d')
+        parser.add_argument('--isOffset', default=False, type=ast.literal_eval)
+        conf = parser.parse_args()
 
-    parser.add_argument('-b', '--bboxExtendRate', default=1.5, type=float,
-                        help='extend rate of bounding box of cropped face')
-    parser.add_argument('-m', '--margin', default=0.1, type=float,
-                        help='margin for the bbox')
-    parser.add_argument('-a', '--isAugment', default=False, type=ast.literal_eval,
-                        help='do augmentation or not')
-    parser.add_argument('--isOldKpt', default=False, type=ast.literal_eval,
-                        help='for 300W there is no pt68_3d')
-    parser.add_argument('--isOffset', default=False, type=ast.literal_eval)
-    conf = parser.parse_args()
-
-    if not conf.isSingle:
-        multiProcess(conf)
-    else:
-        workerProcess([conf.inputDir], [conf.outputDir], 0, conf)
+        if not conf.isSingle:
+            multiProcess(conf)
+        else:
+            workerProcess([conf.inputDir], [conf.outputDir], 0, conf)
