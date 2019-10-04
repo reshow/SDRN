@@ -200,7 +200,8 @@ class AttentionModel(nn.Module):
         self.output_act = nn.Sigmoid()
 
     def forward(self, x):
-        out = self.conv1(x)
+        x_new = x.detach()
+        out = self.conv1(x_new)
         out = self.act1(out)
         out = self.conv2(out)
         out = self.act2(out)

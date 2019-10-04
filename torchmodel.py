@@ -267,7 +267,7 @@ class TorchNet:
         self.model = None
         self.optimizer = None
         self.scheduler = None
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:" + gpus[0] if torch.cuda.is_available() else "cpu")
 
     def buildInitPRN(self):
 
