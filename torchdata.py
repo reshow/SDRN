@@ -319,15 +319,18 @@ def angle2Quaternion(y, p, r):
     return W, X, Y, Z
 
 
-def matrix2Quaternion(R):
+def matrix2Quaternion(R, is_normalize=True):
+    if 1 + R[0, 0] + R[1, 1] + R[2, 2] < 0:
+        return 1, 0, 0, 0
     q0 = np.sqrt(1 + R[0, 0] + R[1, 1] + R[2, 2]) / 2
     if q0 < 1e-8:
         q0 = 1e-8
     q1 = (R[1, 2] - R[2, 1]) / (4 * q0)
     q2 = (R[2, 0] - R[0, 2]) / (4 * q0)
     q3 = (R[0, 1] - R[1, 0]) / (4 * q0)
-    norm_factor = np.sqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3)
-    q0, q1, q2, q3 = (q0 / norm_factor, q1 / norm_factor, q2 / norm_factor, q3 / norm_factor)
+    if is_normalize:
+        norm_factor = np.sqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3)
+        q0, q1, q2, q3 = (q0 / norm_factor, q1 / norm_factor, q2 / norm_factor, q3 / norm_factor)
     return q0, q1, q2, q3
 
 
@@ -353,10 +356,11 @@ def matrix2Angle(R):
     return x, y, z
 
 
-def quaternion2Matrix(Q):
+def quaternion2Matrix(Q, is_normalize=False):
     q0, q1, q2, q3 = Q
-    norm_factor = np.sqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3)
-    q0, q1, q2, q3 = (q0 / norm_factor, q1 / norm_factor, q2 / norm_factor, q3 / norm_factor)
+    if is_normalize:
+        norm_factor = np.sqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3)
+        q0, q1, q2, q3 = (q0 / norm_factor, q1 / norm_factor, q2 / norm_factor, q3 / norm_factor)
     R = [[q0 ** 2 + q1 ** 2 - q2 ** 2 - q3 ** 2, 2 * (q1 * q2 + q0 * q3), 2 * (q1 * q3 - q0 * q2)],
          [2 * (q1 * q2 - q0 * q3), q0 ** 2 - q1 ** 2 + q2 ** 2 - q3 ** 2, 2 * (q0 * q1 + q2 * q3)],
          [2 * (q0 * q2 + q1 * q3), 2 * (q2 * q3 - q0 * q1), q0 ** 2 - q1 ** 2 - q2 ** 2 + q3 ** 2]]
@@ -411,7 +415,7 @@ class ImageData:
         if mode == 'posmap':
             self.image = np.load(self.cropped_image_path).astype(np.uint8)
             self.posmap = np.load(self.cropped_posmap_path).astype(np.float16)
-        elif mode == 'offset':
+        elif mode == 'offset' or mode == 'quaternionoffset':
             self.image = np.load(self.cropped_image_path).astype(np.uint8)
             self.posmap = np.load(self.cropped_posmap_path).astype(np.float16)
             self.offset_posmap = np.load(self.offset_posmap_path).astype(np.float16)
@@ -521,9 +525,6 @@ class DataGenerator(Dataset):
             S = S * 5e2
             T_flatten = T_flatten / 300
 
-            # print(R_flatten)
-
-            # print(R_flatten)
             if S > 1:
                 print('too large scale', S)
             if (abs(T_flatten) > 1).any():
@@ -562,6 +563,52 @@ class DataGenerator(Dataset):
             attention_mask = self.toTensor(attention_mask)
             return image, pos, attention_mask
 
+        elif self.mode == 'quaternionoffset':
+            image = (self.all_image_data[index].image / 255.).astype(np.float32)
+            pos = self.all_image_data[index].posmap.astype(np.float32)
+            offset = self.all_image_data[index].offset_posmap.astype(np.float32)
+
+            bbox_info = self.all_image_data[index].bbox_info
+            trans_mat = bbox_info['TformOffset']
+
+            if self.is_aug:
+                if np.random.rand() > 0.75:
+                    rot_angle = np.random.randint(-90, 90)
+                    rot_angle = rot_angle / 180. * np.pi
+                    R_3d, R_3d_inv = augmentation.getRotateMatrix3D(rot_angle, image.shape)
+                    trans_mat = R_3d.dot(trans_mat)
+                    image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
+                image, pos = augmentation.prnAugment_torch(image, pos, is_rotate=False)
+                image = (image * 255.0).astype(np.uint8)
+                image = self.augment(image)
+                # 　image = self.no_augment(image)
+            else:
+                image = self.no_augment(image)
+
+            t0 = trans_mat[0:3, 0]
+            S = np.sqrt(np.sum(t0 * t0))
+            R = trans_mat[0:3, 0:3]
+            R = R.dot(np.diagflat([1 / S, -1 / S, 1 / S]))
+
+            Q = matrix2Quaternion(R)
+            Qf = np.reshape(np.array(Q) * np.sqrt(S), (4,))
+
+            T_flatten = np.reshape(trans_mat[0:3, 3], (3,))
+            Qf = Qf * 25
+            T_flatten = T_flatten / 300
+
+            if (abs(Qf) > 1).any():
+                print('too large Q', Qf)
+
+            Qf = torch.from_numpy(Qf)
+            T_flatten = torch.from_numpy(T_flatten)
+
+            pos = pos / 280.
+            offset = offset / 4.
+            pos = self.toTensor(pos)
+            offset = self.toTensor(offset)
+
+            return image, pos, offset, Qf, T_flatten,
         else:
             return None
 

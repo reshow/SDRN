@@ -113,7 +113,7 @@ def getRotationTensor(R_flatten):
 
 # torch.autograd.set_detect_anomaly(True)
 
-
+# rebuild posmap from output
 class RPFOModule(nn.Module):
     def __init__(self):
         super(RPFOModule, self).__init__()
@@ -148,6 +148,58 @@ class RPFOModule(nn.Module):
         return pos
 
 
+def quaternion2RotationTensor(Q):
+    q0 = Q[:, 0]
+    q1 = Q[:, 1]
+    q2 = Q[:, 2]
+    q3 = Q[:, 3]
+    outr = torch.zeros((Q.shape[0], 3, 3), device=Q.device)
+    for i in range(Q.shape[0]):
+        outr[i, 0, 0] = q0[i] ** 2 + q1[i] ** 2 - q2[i] ** 2 - q3[i] ** 2
+        outr[i, 0, 1] = 2 * (q1[i] * q2[i] + q0[i] * q3[i])
+        outr[i, 0, 2] = 2 * (q1[i] * q3[i] - q0[i] * q2[i])
+        outr[i, 1, 0] = 2 * (q1[i] * q2[i] - q0[i] * q3[i])
+        outr[i, 1, 1] = q0[i] ** 2 - q1[i] ** 2 + q2[i] ** 2 - q3[i] ** 2
+        outr[i, 1, 2] = 2 * (q0[i] * q1[i] + q2[i] * q3[i])
+        outr[i, 2, 0] = 2 * (q0[i] * q2[i] + q1[i] * q3[i])
+        outr[i, 2, 1] = 2 * (q2[i] * q3[i] - q0[i] * q1[i])
+        outr[i, 2, 2] = q0[i] ** 2 - q1[i] ** 2 - q2[i] ** 2 + q3[i] ** 2
+    return outr
+
+
+class RPFQModule(nn.Module):
+    def __init__(self):
+        super(RPFQModule, self).__init__()
+        self.mean_posmap_tensor = nn.Parameter(torch.from_numpy(mean_posmap.transpose((2, 0, 1))))
+        self.mean_posmap_tensor.requires_grad = False
+        self.T_scale = 300
+        self.Q_scale = 4e-2
+        self.S_scale = 1e4
+        self.offset_scale = 4
+        revert_opetator = np.array([[1., -1., 1.], [1., -1., 1.], [1., -1., 1.]]).astype(np.float32)
+        self.revert_operator = nn.Parameter(torch.from_numpy(revert_opetator))
+        self.revert_operator.requires_grad = False
+
+    def forward(self, Offset, Q, T):
+        s = self.revert_operator.unsqueeze(0)
+        s = s.repeat(Offset.shape[0], 1, 1)
+        s = s * self.S_scale
+        r = quaternion2RotationTensor(Q * self.Q_scale)
+        r = r * s
+        r = r.permute(0, 2, 1)  # r.Transpose
+        t = T * self.T_scale
+        pos = Offset * self.offset_scale + self.mean_posmap_tensor
+        pos = pos.permute(0, 2, 3, 1)
+        pos = pos.reshape((pos.shape[0], 65536, 3))
+        outpos = pos.clone()
+        for i in range(pos.shape[0]):
+            pos[i] = outpos[i].mm(r[i]) + t[i]
+        pos = pos.reshape((pos.shape[0], 256, 256, 3))
+        pos = pos.permute(0, 3, 1, 2)
+        pos = pos / 280.
+        return pos
+
+
 class Flatten(nn.Module):
     def __init__(self):
         super(Flatten, self).__init__()
@@ -157,9 +209,9 @@ class Flatten(nn.Module):
         return out
 
 
-class ParamRegressor(nn.Module):
+class RTSRegressor(nn.Module):
     def __init__(self, num_cluster=1, filters=512):
-        super(ParamRegressor, self).__init__()
+        super(RTSRegressor, self).__init__()
         self.pipe = nn.Sequential(
             nn.AvgPool2d(8, stride=1),
             Flatten(),
@@ -183,6 +235,30 @@ class ParamRegressor(nn.Module):
         T = T * 2 - 1
         S = self.S_layer(feat)
         return R, T, S
+
+
+class QTRegressor(nn.Module):
+    def __init__(self, num_cluster=1, filters=512):
+        super(QTRegressor, self).__init__()
+        self.pipe = nn.Sequential(
+            nn.AvgPool2d(8, stride=1),
+            Flatten(),
+            nn.Linear(filters, filters),
+            nn.BatchNorm1d(filters),
+            nn.ReLU(),
+            nn.Linear(filters, filters),
+            nn.BatchNorm1d(filters),
+            nn.ReLU()
+        )
+        self.Q_layer = nn.Sequential(nn.Linear(filters, num_cluster * 4), nn.Tanh())
+        self.T2d_layer = nn.Sequential(nn.Linear(filters, num_cluster * 3), nn.Tanh())
+
+    def forward(self, x):
+        x_new = x.detach()
+        feat = self.pipe(x_new)
+        Q = self.Q_layer(feat)
+        T2d = self.T2d_layer(feat)
+        return Q, T2d
 
 
 class AttentionModel(nn.Module):
