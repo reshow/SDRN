@@ -424,6 +424,11 @@ class ImageData:
             self.image = np.load(self.cropped_image_path).astype(np.uint8)
             self.posmap = np.load(self.cropped_posmap_path).astype(np.float16)
             self.attention_mask = np.load(self.attention_mask_path).astype(np.uint8)
+        elif mode == 'siam':
+            self.image = np.load(self.cropped_image_path).astype(np.uint8)
+            self.posmap = np.load(self.cropped_posmap_path).astype(np.float16)
+            self.offset_posmap = np.load(self.offset_posmap_path).astype(np.float16)
+            self.bbox_info = sio.loadmat(self.bbox_info_path)
         else:
             pass
 
@@ -594,7 +599,7 @@ class DataGenerator(Dataset):
             Qf = np.reshape(np.array(Q) * np.sqrt(S), (4,))
 
             T_flatten = np.reshape(trans_mat[0:3, 3], (3,))
-            Qf = Qf * 25
+            Qf = Qf * 20
             T_flatten = T_flatten / 300
 
             if (abs(Qf) > 1).any():
@@ -609,6 +614,31 @@ class DataGenerator(Dataset):
             offset = self.toTensor(offset)
 
             return image, pos, offset, Qf, T_flatten,
+
+        elif self.mode == 'siam':
+
+            image = (self.all_image_data[index].image / 255.).astype(np.float32)
+            pos = self.all_image_data[index].posmap.astype(np.float32)
+            offset = self.all_image_data[index].offset_posmap.astype(np.float32)
+
+            if self.is_aug:
+                if np.random.rand() > 0.75:
+                    rot_angle = np.random.randint(-90, 90)
+                    rot_angle = rot_angle / 180. * np.pi
+                    image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
+                image, pos = augmentation.prnAugment_torch(image, pos, is_rotate=False)
+                image = (image * 255.0).astype(np.uint8)
+                image = self.augment(image)
+                # 　image = self.no_augment(image)
+            else:
+                image = self.no_augment(image)
+
+            pos = pos / 280.
+            offset = offset / 4.
+            pos = self.toTensor(pos)
+            offset = self.toTensor(offset)
+
+            return image, pos, offset
         else:
             return None
 

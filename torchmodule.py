@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from torchdata import mean_posmap
+from torchdata import mean_posmap, uv_kpt
+import skimage
 
 
 # Hout​=(Hin​−1)stride[0]−2padding[0]+kernels​ize[0]+outputp​adding[0]
@@ -173,7 +174,7 @@ class RPFQModule(nn.Module):
         self.mean_posmap_tensor = nn.Parameter(torch.from_numpy(mean_posmap.transpose((2, 0, 1))))
         self.mean_posmap_tensor.requires_grad = False
         self.T_scale = 300
-        self.Q_scale = 4e-2
+        self.Q_scale = 5e-2
         self.S_scale = 1e4
         self.offset_scale = 4
         revert_opetator = np.array([[1., -1., 1.], [1., -1., 1.], [1., -1., 1.]]).astype(np.float32)
@@ -198,6 +199,39 @@ class RPFQModule(nn.Module):
         pos = pos.permute(0, 3, 1, 2)
         pos = pos / 280.
         return pos
+
+
+class EstimateRebuildModule(nn.Module):
+    def __init__(self):
+        super(EstimateRebuildModule, self).__init__()
+        self.mean_posmap_tensor = nn.Parameter(torch.from_numpy(mean_posmap.transpose((2, 0, 1))))
+        self.mean_posmap_tensor.requires_grad = False
+
+        self.S_scale = 1e4
+        self.offset_scale = 4
+        revert_opetator = np.array([[1., -1., 1.], [1., -1., 1.], [1., -1., 1.]]).astype(np.float32)
+        self.revert_operator = nn.Parameter(torch.from_numpy(revert_opetator))
+        self.revert_operator.requires_grad = False
+
+    def forward(self, Offset, Posmap_kpt):
+        offsetmap = Offset * self.offset_scale + self.mean_posmap_tensor
+        offsetmap = offsetmap.permute(0, 2, 3, 1)
+        kptmap = Posmap_kpt.permute(0, 2, 3, 1)
+
+        offsetmap_np = offsetmap.detach().cpu().numpy()
+        for i in range(offsetmap.shape[0]):
+            revert_np = np.diagflat([1, -1, 1])
+            temp_kptmap = kptmap[i].detach().cpu().numpy()
+            offsetmap_np[i] = offsetmap_np[i].dot(revert_np.T)
+
+            srckpt = offsetmap_np[i][uv_kpt[:, 0], uv_kpt[:, 1]]
+            dstkpt = temp_kptmap[uv_kpt[:, 0], uv_kpt[:, 1]]
+            tform = skimage.transform.estimate_transform('similarity', srckpt, dstkpt)
+            offsetmap_np[i] = offsetmap_np[i].dot(tform.params[0:3, 0:3].T) + tform.params[0:3, 3]
+
+        outpos = torch.from_numpy(offsetmap_np).to(self.mean_posmap_tensor.device)
+        outpos = outpos.permute(0, 3, 1, 2)
+        return outpos
 
 
 class Flatten(nn.Module):
@@ -241,21 +275,22 @@ class QTRegressor(nn.Module):
     def __init__(self, num_cluster=1, filters=512):
         super(QTRegressor, self).__init__()
         self.pipe = nn.Sequential(
-            nn.AvgPool2d(8, stride=1),
+            # nn.AvgPool2d(8, stride=1),
+            nn.AdaptiveAvgPool2d((2, 2)),
             Flatten(),
-            nn.Linear(filters, filters),
-            nn.BatchNorm1d(filters),
-            nn.ReLU(),
-            nn.Linear(filters, filters),
-            nn.BatchNorm1d(filters),
-            nn.ReLU()
+            nn.Linear(4 * filters, 4 * filters),
+            # nn.BatchNorm1d(2*filters),
+            # nn.ReLU(),
+            # nn.Linear(2*filters, 2*filters),
+            # # nn.BatchNorm1d(2*filters),
+            # nn.ReLU()
         )
-        self.Q_layer = nn.Sequential(nn.Linear(filters, num_cluster * 4), nn.Tanh())
-        self.T2d_layer = nn.Sequential(nn.Linear(filters, num_cluster * 3), nn.Tanh())
+        self.Q_layer = nn.Sequential(nn.Linear(4 * filters, num_cluster * 4), nn.Tanh())
+        self.T2d_layer = nn.Sequential(nn.Linear(4 * filters, num_cluster * 2), nn.Tanh())
 
     def forward(self, x):
-        x_new = x.detach()
-        feat = self.pipe(x_new)
+        # x_new = x.detach()
+        feat = self.pipe(x)
         Q = self.Q_layer(feat)
         T2d = self.T2d_layer(feat)
         return Q, T2d
