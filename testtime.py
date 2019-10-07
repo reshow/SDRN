@@ -181,7 +181,7 @@ def changeImageType(data_dir):
         for file in files:
             file_name = file.split('.')[0]
             file_type = file.split('.')[1]
-            if file_type == 'jpg':
+            if file_type == 'jpg' and 'cropped' in file_name:
                 image = np.load(root + '/' + str(file_name) + '.npy')
                 posmap = np.load(root + '/' + str(file_name) + '_uv_posmap.npy')
                 mask = getImageAttentionMask(image, posmap)
@@ -198,7 +198,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='data preprocess arguments')
 
-    parser.add_argument('-i', '--inputDir', default='data/images/AFLW2000', type=str,
+    parser.add_argument('-i', '--inputDir', default='data/images/AFLW2000-crop', type=str,
                         help='path to the input directory, where input images are stored.')
     conf = parser.parse_args()
     changeImageType(conf.inputDir)

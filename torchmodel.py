@@ -55,9 +55,7 @@ class InitPRN(nn.Module):
             ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 2, kernel_size=4, stride=2),
             ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1),
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 1, kernel_size=4, stride=2),
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=feature_size * 1, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=feature_size * 1, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1),
@@ -243,6 +241,11 @@ class AttentionPRN(nn.Module):
         x = self.encoder_block1(x)
         x = self.encoder_block2_1(x)
         attention = self.attention_branch(x)
+
+        # a=attention.squeeze().cpu().numpy()
+        # import visualize
+        # visualize.showImage(np.exp(a),False)
+
         attention_features = torch.stack([x[i] * torch.exp(attention[i]) for i in range(len(x))], dim=0)
 
         f = self.encoder_block2_2(attention_features)

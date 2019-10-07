@@ -400,30 +400,50 @@ class NetworkManager:
         total_error_list = []
         if self.data_mode == 1:
             data_generator = DataGenerator(all_image_data=self.test_data, mode="offset", is_aug=False)
+        elif self.data_mode == 2:
+            data_generator = DataGenerator(all_image_data=self.test_data, mode="attention", is_aug=False)
         else:
             data_generator = DataGenerator(all_image_data=self.test_data, mode="posmap", is_aug=False)
         with torch.no_grad():
             model.eval()
             for i in range(len(self.test_data)):
                 data = data_generator.__getitem__(i)
-                x = data[0]
-                y = data[1]
-                x = torch.unsqueeze(x, 0)
-                y = torch.unsqueeze(y, 0)
-                x, y = x.to(self.net.device), y.to(self.net.device)
-                x = x.float()
-                y = y.float()
-                outputs = model(x, y)
-                p = outputs[-1]
+                if self.data_mode == 2:
+                    x = data[0]
+                    x = torch.unsqueeze(x, 0)
+                    x = x.to(self.net.device).float()
+                    y = [data[j] for j in range(1, 3)]
+                    for j in range(2):
+                        y[j] = y[j].to(self.net.device).float()
+                        y[j] = torch.unsqueeze(y[j], 0)
+                    outputs = model(x, y[0], y[1])
+                    p = outputs[-1]
+                    x = x.squeeze().cpu().numpy().transpose(1, 2, 0)
+                    p = p.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+                    b = sio.loadmat(self.test_data[i].bbox_info_path)
+                    gt_y = y[0]
+                    gt_y = gt_y.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
 
-                x = x.squeeze().cpu().numpy().transpose(1, 2, 0)
-                y = y.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
-                p = p.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
-                b = sio.loadmat(self.test_data[i].bbox_info_path)
+                else:
+                    x = data[0]
+                    y = data[1]
+                    x = torch.unsqueeze(x, 0)
+                    y = torch.unsqueeze(y, 0)
+                    x, y = x.to(self.net.device), y.to(self.net.device)
+                    x = x.float()
+                    y = y.float()
+                    outputs = model(x, y)
+                    p = outputs[-1]
+                    x = x.squeeze().cpu().numpy().transpose(1, 2, 0)
+                    y = y.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+                    p = p.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+                    b = sio.loadmat(self.test_data[i].bbox_info_path)
+                    gt_y = y
+
                 temp_errors = []
                 for error_func_name in error_func_list:
                     error_func = getErrorFunction(error_func_name)
-                    error = error_func(y, p, b['Bbox'], b['Kpt'])
+                    error = error_func(gt_y, p, b['Bbox'], b['Kpt'])
                     temp_errors.append(error)
                 total_error_list.append(temp_errors)
                 print(self.test_data[i].init_image_path, temp_errors)
@@ -499,4 +519,3 @@ if __name__ == '__main__':
             net_manager.test(error_func_list=run_args.errorFunction, is_visualize=run_args.isVisualize)
 
     writer.close()
-
