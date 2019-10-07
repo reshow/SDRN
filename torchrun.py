@@ -167,8 +167,8 @@ class NetworkManager:
                 sum_metric_loss = np.zeros(2)
             elif self.data_mode == 3:
                 sum_metric_loss = np.zeros(4)
-            elif self.data_mode==4:
-                sum_metric_loss=np.zeros(3)
+            elif self.data_mode == 4:
+                sum_metric_loss = np.zeros(3)
             else:
                 sum_metric_loss = 0.0
             for i, data in enumerate(train_data_loader):
@@ -497,3 +497,6 @@ if __name__ == '__main__':
         if run_args.loadModelPath is not None:
             net_manager.net.loadWeights(run_args.loadModelPath)
             net_manager.test(error_func_list=run_args.errorFunction, is_visualize=run_args.isVisualize)
+
+    writer.close()
+
