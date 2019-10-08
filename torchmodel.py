@@ -71,6 +71,59 @@ class InitPRN(nn.Module):
         return loss, metrics, x
 
 
+class InitPRN2(nn.Module):
+    def __init__(self):
+        super(InitPRN2, self).__init__()
+        self.feature_size = 16
+        feature_size = self.feature_size
+        self.layer0 = Conv2d_BN_AC(in_channels=3, out_channels=feature_size, kernel_size=3, stride=1, padding=1)
+        self.encoder = nn.Sequential(
+            ResBlock(in_channels=feature_size, out_channels=feature_size * 2, kernel_size=3, stride=2, with_conv_shortcut=True),
+            ResBlock(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=3, stride=1, with_conv_shortcut=False),
+            ResBlock(in_channels=feature_size * 2, out_channels=feature_size * 4, kernel_size=3, stride=2, with_conv_shortcut=True),
+            ResBlock(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=3, stride=1, with_conv_shortcut=False),
+            ResBlock(in_channels=feature_size * 4, out_channels=feature_size * 8, kernel_size=3, stride=2, with_conv_shortcut=True),
+            ResBlock(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=3, stride=1, with_conv_shortcut=False),
+            ResBlock(in_channels=feature_size * 8, out_channels=feature_size * 16, kernel_size=3, stride=2, with_conv_shortcut=True),
+            ResBlock(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=3, stride=1, with_conv_shortcut=False),
+            ResBlock(in_channels=feature_size * 16, out_channels=feature_size * 32, kernel_size=3, stride=2, with_conv_shortcut=True),
+            ResBlock(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=3, stride=1, with_conv_shortcut=False),
+            # PRNResBlock(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1, with_conv_shortcut=False),
+            # PRNResBlock(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1, with_conv_shortcut=False),
+
+        )
+        self.decoder = nn.Sequential(
+            # output_padding = stride-1
+            # padding=(kernelsize-1)//2
+            # ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1),
+            TransposeResBlock(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=3, stride=1),
+            TransposeResBlock(in_channels=feature_size * 32, out_channels=feature_size * 16, kernel_size=3, stride=2, with_conv_shortcut=True),
+            TransposeResBlock(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=3, stride=1),
+            TransposeResBlock(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=3, stride=1),
+            TransposeResBlock(in_channels=feature_size * 16, out_channels=feature_size * 8, kernel_size=3, stride=2, with_conv_shortcut=True),
+            TransposeResBlock(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=3, stride=1),
+            TransposeResBlock(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=3, stride=1),
+            TransposeResBlock(in_channels=feature_size * 8, out_channels=feature_size * 4, kernel_size=3, stride=2, with_conv_shortcut=True),
+            TransposeResBlock(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=3, stride=1),
+            TransposeResBlock(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=3, stride=1),
+            TransposeResBlock(in_channels=feature_size * 4, out_channels=feature_size * 2, kernel_size=3, stride=2, with_conv_shortcut=True),
+            TransposeResBlock(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=3, stride=1),
+            TransposeResBlock(in_channels=feature_size * 2, out_channels=feature_size * 1, kernel_size=3, stride=2, with_conv_shortcut=True),
+            TransposeResBlock(in_channels=feature_size * 1, out_channels=feature_size * 1, kernel_size=3, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=3, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=3, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=3, stride=1, activation=nn.Sigmoid())
+        )
+        self.loss = InitLoss()
+
+    def forward(self, inpt, gt):
+        x = self.layer0(inpt)
+        x = self.encoder(x)
+        x = self.decoder(x)
+        loss, metrics = self.loss(x, gt)
+        return loss, metrics, x
+
+
 class OffsetLoss(nn.Module):
     def __init__(self):
         super(OffsetLoss, self).__init__()
@@ -465,7 +518,7 @@ class TorchNet:
 
     def buildInitPRN(self):
 
-        self.model = InitPRN()
+        self.model = InitPRN2()
 
         if self.gpu_num > 1:
             self.model = nn.DataParallel(self.model, device_ids=self.visible_devices)

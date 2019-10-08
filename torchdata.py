@@ -480,10 +480,10 @@ class DataGenerator(Dataset):
             pos = self.all_image_data[index].posmap.astype(np.float32)
             if self.is_aug:
                 image, pos = augmentation.prnAugment_torch(image, pos)
-                image = (image * 255.0).astype(np.uint8)
-                image = self.augment(image)
+                # image = (image * 255.0).astype(np.uint8)
+                # image = self.augment(image)
                 # image=augmentation.prnAugment(image)
-                # #image = self.no_augment(image)
+                image = self.no_augment(image)
             else:
                 image = self.no_augment(image)
             pos = pos / 280.

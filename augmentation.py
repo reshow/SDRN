@@ -173,14 +173,14 @@ def prnAugment_keras(x):
 
 def prnAugment_torch(x, y, is_rotate=True):
     if is_rotate:
-        if np.random.rand() > 0.75:
+        if np.random.rand() > 0.5:
             x, y = rotateData(x, y, 90)
-    if np.random.rand() > 0.75:
+    if np.random.rand() > 0.5:
         x = randomErase(x)
-    if np.random.rand() > 0.75:
+    if np.random.rand() > 0.5:
         x = channelScale(x)
-    if np.random.rand() > 0.75:
-        x = gaussNoise(x)
+    # if np.random.rand() > 0.75:
+    #     x = gaussNoise(x)
     return x, y
 
 
