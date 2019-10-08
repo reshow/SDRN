@@ -13,9 +13,9 @@ class Conv2d_BN_AC(nn.Module):
         super(Conv2d_BN_AC, self).__init__()
         self.pipe = nn.Sequential(
             nn.Conv2d(in_channels=in_channels, out_channels=out_channels,
-                      kernel_size=kernel_size, stride=stride, padding=padding, padding_mode=padding_mode),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU())
+                      kernel_size=kernel_size, stride=stride, padding=padding, padding_mode=padding_mode, bias=False),
+            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.001),
+            nn.ReLU(inplace=True))
 
     def forward(self, x):
         out = self.pipe(x)
@@ -23,13 +23,13 @@ class Conv2d_BN_AC(nn.Module):
 
 
 class ConvTranspose2d_BN_AC(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, activation=nn.ReLU()):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, activation=nn.ReLU(inplace=True)):
         super(ConvTranspose2d_BN_AC, self).__init__()
         self.deconv = nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels,
-                                         kernel_size=kernel_size, stride=stride, padding=(kernel_size - 1) // 2, output_padding=stride - 1)
+                                         kernel_size=kernel_size, stride=stride, padding=(kernel_size - 1) // 2, output_padding=stride - 1, bias=False)
 
         self.BN_AC = nn.Sequential(
-            nn.BatchNorm2d(out_channels),
+            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.001),
             activation)
 
         self.crop_size = (kernel_size + 1) % 2
@@ -38,6 +38,27 @@ class ConvTranspose2d_BN_AC(nn.Module):
         out = self.deconv(x)
         out2 = out[:, :, self.crop_size:out.shape[2], self.crop_size:out.shape[3]].clone()
         out2 = self.BN_AC(out2)
+        return out2
+
+
+class ConvTranspose2d_BN_AC2(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=4, stride=1, activation=nn.ReLU(inplace=True)):
+        super(ConvTranspose2d_BN_AC2, self).__init__()
+        if stride % 2 == 0:
+            self.deconv = nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels,
+                                             kernel_size=kernel_size, stride=stride, padding=(kernel_size - 1) // 2, bias=False)
+        else:
+            self.deconv = nn.Sequential(nn.ConstantPad2d((2, 1, 2, 1), 0),
+                                        nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels,
+                                                           kernel_size=kernel_size, stride=stride, padding=3, bias=False))
+
+        self.BN_AC = nn.Sequential(
+            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.001),
+            activation)
+
+    def forward(self, x):
+        out = self.deconv(x)
+        out2 = self.BN_AC(out)
         return out2
 
 
@@ -50,7 +71,7 @@ class PRNResBlock(nn.Module):
                 Conv2d_BN_AC(in_channels=in_channels, out_channels=out_channels // 2, stride=1, kernel_size=1),
                 Conv2d_BN_AC(in_channels=out_channels // 2, out_channels=out_channels // 2, stride=stride,
                              kernel_size=kernel_size, padding=(kernel_size - 1) // 2),
-                nn.Conv2d(in_channels=out_channels // 2, out_channels=out_channels, stride=1, kernel_size=1),
+                nn.Conv2d(in_channels=out_channels // 2, out_channels=out_channels, stride=1, kernel_size=1, bias=False),
 
             )
         else:
@@ -58,85 +79,24 @@ class PRNResBlock(nn.Module):
                 Conv2d_BN_AC(in_channels=in_channels, out_channels=out_channels // 2, stride=1, kernel_size=1),
                 Conv2d_BN_AC(in_channels=out_channels // 2, out_channels=out_channels // 2, stride=stride,
                              kernel_size=kernel_size, padding=kernel_size - 1, padding_mode='circular'),
-                nn.Conv2d(in_channels=out_channels // 2, out_channels=out_channels, stride=1, kernel_size=1)
+                nn.Conv2d(in_channels=out_channels // 2, out_channels=out_channels, stride=1, kernel_size=1, bias=False)
             )
         self.shortcut = nn.Sequential()
 
         if with_conv_shortcut:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, stride=stride, kernel_size=1),
+                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, stride=stride, kernel_size=1, bias=False),
             )
         self.BN_AC = nn.Sequential(
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU()
+            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.001),
+            nn.ReLU(inplace=True)
         )
 
     def forward(self, x):
         out = self.pipe(x)
-        out = out + self.shortcut(x)
-        out = self.BN_AC(out)
-        return out
-
-
-class ResBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, with_conv_shortcut=False):
-        super(ResBlock, self).__init__()
-
-        if kernel_size % 2 == 1:
-            self.pipe = nn.Sequential(
-                Conv2d_BN_AC(in_channels=in_channels, out_channels=out_channels, stride=1, kernel_size=1),
-                Conv2d_BN_AC(in_channels=out_channels, out_channels=out_channels, stride=stride,
-                             kernel_size=kernel_size, padding=(kernel_size - 1) // 2),
-                nn.Conv2d(in_channels=out_channels, out_channels=out_channels, stride=1, kernel_size=1)
-            )
-        else:
-            self.pipe = nn.Sequential(
-                Conv2d_BN_AC(in_channels=in_channels, out_channels=out_channels // 2, stride=1, kernel_size=1),
-                Conv2d_BN_AC(in_channels=out_channels // 2, out_channels=out_channels // 2, stride=stride,
-                             kernel_size=kernel_size, padding=kernel_size - 1, padding_mode='circular'),
-                nn.Conv2d(in_channels=out_channels // 2, out_channels=out_channels, stride=1, kernel_size=1)
-            )
-        self.shortcut = nn.Sequential()
-
-        if with_conv_shortcut:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, stride=stride, kernel_size=1),
-            )
-        self.BN_AC = nn.Sequential(
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU()
-        )
-
-    def forward(self, x):
-        out = self.pipe(x)
-        out = out + self.shortcut(x)
-        out = self.BN_AC(out)
-        return out
-
-
-class TransposeResBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, with_conv_shortcut=False, activation=nn.ReLU()):
-        super(TransposeResBlock, self).__init__()
-        self.pipe = nn.Sequential(
-            ConvTranspose2d_BN_AC(in_channels=in_channels, out_channels=in_channels, stride=1, kernel_size=1),
-            ConvTranspose2d_BN_AC(in_channels=in_channels, out_channels=out_channels, stride=stride,
-                                  kernel_size=kernel_size),
-            nn.ConvTranspose2d(in_channels=out_channels, out_channels=out_channels, stride=1, kernel_size=1), )
-
-        self.shortcut = nn.Sequential()
-
-        if with_conv_shortcut:
-            self.shortcut = nn.Sequential(
-                nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels, stride=stride, kernel_size=1, output_padding=stride - 1),
-            )
-        self.BN_AC = nn.Sequential(
-            nn.BatchNorm2d(out_channels),
-            activation
-        )
-
-    def forward(self, x):
-        out = self.pipe(x)
-        out = out + self.shortcut(x)
+        s = self.shortcut(x)
+        assert (s.shape == out.shape)
+        out = out + s
         out = self.BN_AC(out)
         return out
 

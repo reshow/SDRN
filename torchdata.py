@@ -483,9 +483,11 @@ class DataGenerator(Dataset):
                 # image = (image * 255.0).astype(np.uint8)
                 # image = self.augment(image)
                 # image=augmentation.prnAugment(image)
-                image = self.no_augment(image)
+                # image = self.no_augment(image)
+                image=self.toTensor(image)
             else:
-                image = self.no_augment(image)
+                image = self.toTensor(image)
+                # image = self.no_augment(image)
             pos = pos / 280.
             pos = self.toTensor(pos)
             return image, pos
