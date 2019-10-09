@@ -14,7 +14,7 @@ class Conv2d_BN_AC(nn.Module):
         self.pipe = nn.Sequential(
             nn.Conv2d(in_channels=in_channels, out_channels=out_channels,
                       kernel_size=kernel_size, stride=stride, padding=padding, padding_mode=padding_mode, bias=False),
-            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.001),
+            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.5),
             nn.ReLU(inplace=True))
 
     def forward(self, x):
@@ -29,7 +29,7 @@ class ConvTranspose2d_BN_AC(nn.Module):
                                          kernel_size=kernel_size, stride=stride, padding=(kernel_size - 1) // 2, output_padding=stride - 1, bias=False)
 
         self.BN_AC = nn.Sequential(
-            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.001),
+            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.5),
             activation)
 
         self.crop_size = (kernel_size + 1) % 2
@@ -53,7 +53,7 @@ class ConvTranspose2d_BN_AC2(nn.Module):
                                                            kernel_size=kernel_size, stride=stride, padding=3, bias=False))
 
         self.BN_AC = nn.Sequential(
-            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.001),
+            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.5),
             activation)
 
     def forward(self, x):
@@ -88,7 +88,7 @@ class PRNResBlock(nn.Module):
                 nn.Conv2d(in_channels=in_channels, out_channels=out_channels, stride=stride, kernel_size=1, bias=False),
             )
         self.BN_AC = nn.Sequential(
-            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.001),
+            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.5),
             nn.ReLU(inplace=True)
         )
 

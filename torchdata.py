@@ -481,10 +481,10 @@ class DataGenerator(Dataset):
             if self.is_aug:
                 image, pos = augmentation.prnAugment_torch(image, pos)
                 # image = (image * 255.0).astype(np.uint8)
-                # image = self.augment(image)
-                # image=augmentation.prnAugment(image)
+                #  image = self.augment(image)
+
                 # image = self.no_augment(image)
-                image=self.toTensor(image)
+                image = self.toTensor(image)
             else:
                 image = self.toTensor(image)
                 # image = self.no_augment(image)
@@ -650,5 +650,5 @@ class DataGenerator(Dataset):
 
 def getDataLoader(all_image_data, mode='posmap', batch_size=16, is_shuffle=False, is_aug=False):
     dataset = DataGenerator(all_image_data=all_image_data, mode=mode, is_aug=is_aug)
-    train_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=is_shuffle, num_workers=4, pin_memory=True)
+    train_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=is_shuffle, num_workers=0, pin_memory=True)
     return train_loader

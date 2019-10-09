@@ -6,7 +6,10 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 
-weight_mask_np = io.imread('uv-data/uv_weight_mask.png') / 255.
+weight_mask_np = io.imread('uv-data/uv_weight_mask.png').astype(float)
+weight_mask_np[weight_mask_np == 255] = 256
+weight_mask_np = weight_mask_np / 16
+
 weight_mask = torch.from_numpy(weight_mask_np)
 face_mask = torch.from_numpy(face_mask_np)
 face_mask_3D = toTensor(np.repeat(np.reshape(face_mask_np, (256, 256, 1)), 3, -1))
@@ -59,7 +62,8 @@ def MaskLoss():
 
         def forward(self, y_true, y_pred):
             return F.binary_cross_entropy(y_pred, y_true)
-    return  TemplateLoss
+
+    return TemplateLoss
 
 
 def getLossFunction(loss_func_name='SquareError'):

@@ -113,15 +113,22 @@ def randomErase(x, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 / 0.3, v_l=0, v_
         if np.random.rand() < 0.25:
             c = np.random.uniform(v_l, v_h)
             out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
-        else:
+        elif np.random.rand()<0.75:
             # c = np.random.random((min(top + h, img_h) - top, min(left + w, img_w) - left, 3))
             # out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
             c0 = np.random.uniform(v_l, v_h)
             c1 = np.random.uniform(v_l, v_h)
             c2 = np.random.uniform(v_l, v_h)
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :0] = c0
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :1] = c1
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :2] = c2
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :1] = c0
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :2] = c1
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :3] = c2
+        else:
+            c0 = np.random.uniform(v_l, v_h)
+            c1 = np.random.uniform(v_l, v_h)
+            c2 = np.random.uniform(v_l, v_h)
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :1] *= c0
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :2] *= c1
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :3] *= c2
     return out
 
 
@@ -148,9 +155,9 @@ def randomMaskErase(x, attention, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 /
             c0 = np.random.uniform(v_l, v_h)
             c1 = np.random.uniform(v_l, v_h)
             c2 = np.random.uniform(v_l, v_h)
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :0] = c0
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :1] = c1
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :2] = c2
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :1] = c0
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :2] = c1
+            out[top:min(top + h, img_h), left:min(left + w, img_w), :3] = c2
     return out, out_attention
 
 
