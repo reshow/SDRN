@@ -48,6 +48,8 @@ class NetworkManager:
         # RZYNet
         # if true, provide [pos offset R T] as groundtruth. Otherwise ,provide pos as GT
 
+        self.is_pre_read = args.isPreRead
+
         # 0: normal PRN [image posmap]  1: offset [image offset R T S]
         self.data_mode = 0
         self.weight_decay = 0.0001
@@ -136,22 +138,31 @@ class NetworkManager:
         # for name, param in model.named_parameters():
         #     if 'weight' in name:
         #         l2_weight_loss += torch.norm(param, 2)
-
         if self.data_mode == 1:
-            train_data_loader = getDataLoader(self.train_data, mode='offset', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True)
-            val_data_loader = getDataLoader(self.val_data, mode='offset', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False)
+            train_data_loader = getDataLoader(self.train_data, mode='offset', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
+                                              is_pre_read=self.is_pre_read)
+            val_data_loader = getDataLoader(self.val_data, mode='offset', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
+                                            is_pre_read=self.is_pre_read)
         elif self.data_mode == 2:
-            train_data_loader = getDataLoader(self.train_data, mode='attention', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True)
-            val_data_loader = getDataLoader(self.val_data, mode='attention', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False)
+            train_data_loader = getDataLoader(self.train_data, mode='attention', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
+                                              is_pre_read=self.is_pre_read)
+            val_data_loader = getDataLoader(self.val_data, mode='attention', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
+                                            is_pre_read=self.is_pre_read)
         elif self.data_mode == 3:
-            train_data_loader = getDataLoader(self.train_data, mode='quaternionoffset', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True)
-            val_data_loader = getDataLoader(self.val_data, mode='quaternionoffset', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False)
+            train_data_loader = getDataLoader(self.train_data, mode='quaternionoffset', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
+                                              is_pre_read=self.is_pre_read)
+            val_data_loader = getDataLoader(self.val_data, mode='quaternionoffset', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
+                                            is_pre_read=self.is_pre_read)
         elif self.data_mode == 4:
-            train_data_loader = getDataLoader(self.train_data, mode='siam', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True)
-            val_data_loader = getDataLoader(self.val_data, mode='siam', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False)
+            train_data_loader = getDataLoader(self.train_data, mode='siam', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
+                                              is_pre_read=self.is_pre_read)
+            val_data_loader = getDataLoader(self.val_data, mode='siam', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
+                                            is_pre_read=self.is_pre_read)
         else:
-            train_data_loader = getDataLoader(self.train_data, mode='posmap', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True)
-            val_data_loader = getDataLoader(self.val_data, mode='posmap', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False)
+            train_data_loader = getDataLoader(self.train_data, mode='posmap', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
+                                              is_pre_read=self.is_pre_read)
+            val_data_loader = getDataLoader(self.val_data, mode='posmap', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
+                                            is_pre_read=self.is_pre_read)
 
         for epoch in range(self.start_epoch, self.epoch):
             print('Epoch: %d' % epoch)
@@ -399,11 +410,11 @@ class NetworkManager:
         model = self.net.model
         total_error_list = []
         if self.data_mode == 1:
-            data_generator = DataGenerator(all_image_data=self.test_data, mode="offset", is_aug=False)
+            data_generator = DataGenerator(all_image_data=self.test_data, mode="offset", is_aug=False,is_pre_read=self.is_pre_read)
         elif self.data_mode == 2:
-            data_generator = DataGenerator(all_image_data=self.test_data, mode="attention", is_aug=False)
+            data_generator = DataGenerator(all_image_data=self.test_data, mode="attention", is_aug=False,is_pre_read=self.is_pre_read)
         else:
-            data_generator = DataGenerator(all_image_data=self.test_data, mode="posmap", is_aug=False)
+            data_generator = DataGenerator(all_image_data=self.test_data, mode="posmap", is_aug=False,is_pre_read=self.is_pre_read)
         with torch.no_grad():
             model.eval()
             for i in range(len(self.test_data)):
@@ -483,6 +494,7 @@ if __name__ == '__main__':
     parser.add_argument('-struct', '--netStructure', default='InitPRNet', type=str, help='')
     parser.add_argument('-lr', '--learningRate', default=1e-4, type=float)
     parser.add_argument('--startEpoch', default=0, type=int)
+    parser.add_argument('--isPreRead', default=True, type=ast.literal_eval)
 
     run_args = parser.parse_args()
 

@@ -432,6 +432,36 @@ class ImageData:
         else:
             pass
 
+    def getImage(self):
+        if self.image is None:
+            return np.load(self.cropped_image_path)
+        else:
+            return self.image
+
+    def getPosmap(self):
+        if self.posmap is None:
+            return np.load(self.cropped_posmap_path)
+        else:
+            return self.posmap
+
+    def getOffsetPosmap(self):
+        if self.offset_posmap is None:
+            return np.load(self.offset_posmap_path)
+        else:
+            return self.offset_posmap
+
+    def getBboxInfo(self):
+        if self.bbox_info is None:
+            return sio.loadmat(self.bbox_info_path)
+        else:
+            return self.bbox_info
+
+    def getAttentionMask(self):
+        if self.attention_mask is None:
+            return np.load(self.attention_mask_path)
+        else:
+            return self.attention_mask
+
 
 def toTensor(image):
     image = image.transpose((2, 0, 1))
@@ -440,7 +470,7 @@ def toTensor(image):
 
 
 class DataGenerator(Dataset):
-    def __init__(self, all_image_data, mode='posmap', is_aug=False):
+    def __init__(self, all_image_data, mode='posmap', is_aug=False, is_pre_read=True):
         super(DataGenerator, self).__init__()
         self.all_image_data = all_image_data
         self.image_height = 256
@@ -467,25 +497,29 @@ class DataGenerator(Dataset):
         # mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
         self.no_augment = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])])
 
-        i = 0
-        for data in self.all_image_data:
-            data.readFile(mode=self.mode)
-            print(i, end='\r')
-            i += 1
+        self.is_pre_read = is_pre_read
+        if is_pre_read:
+            i = 0
+            for data in self.all_image_data:
+                data.readFile(mode=self.mode)
+                print(i, end='\r')
+                i += 1
 
     def __getitem__(self, index):
         if self.mode == 'posmap':
 
-            image = (self.all_image_data[index].image / 255.0).astype(np.float32)
-            pos = self.all_image_data[index].posmap.astype(np.float32)
+            image = (self.all_image_data[index].getImage() / 255.0).astype(np.float32)
+            pos = self.all_image_data[index].getPosmap().astype(np.float32)
             if self.is_aug:
                 image, pos = augmentation.prnAugment_torch(image, pos)
                 # image = (image * 255.0).astype(np.uint8)
                 #  image = self.augment(image)
 
                 # image = self.no_augment(image)
+                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
                 image = self.toTensor(image)
             else:
+                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
                 image = self.toTensor(image)
                 # image = self.no_augment(image)
             pos = pos / 280.
@@ -494,11 +528,10 @@ class DataGenerator(Dataset):
 
         elif self.mode == 'offset':
 
-            image = (self.all_image_data[index].image / 255.).astype(np.float32)
-            pos = self.all_image_data[index].posmap.astype(np.float32)
-            offset = self.all_image_data[index].offset_posmap.astype(np.float32)
-
-            bbox_info = self.all_image_data[index].bbox_info
+            image = (self.all_image_data[index].getImage() / 255.).astype(np.float32)
+            pos = self.all_image_data[index].getPosmap().astype(np.float32)
+            offset = self.all_image_data[index].getOffsetPosmap().astype(np.float32)
+            bbox_info = self.all_image_data[index].getBboxInfo()
             trans_mat = bbox_info['TformOffset']
 
             if self.is_aug:
@@ -509,11 +542,13 @@ class DataGenerator(Dataset):
                     trans_mat = R_3d.dot(trans_mat)
                     image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
                 image, pos = augmentation.prnAugment_torch(image, pos, is_rotate=False)
-                image = (image * 255.0).astype(np.uint8)
-                image = self.augment(image)
-                # 　image = self.no_augment(image)
+                # image = (image * 255.0).astype(np.uint8)
+                # image = self.augment(image)
+                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                image = self.toTensor(image)
             else:
-                image = self.no_augment(image)
+                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                image = self.toTensor(image)
 
             t0 = trans_mat[0:3, 0]
             S = np.sqrt(np.sum(t0 * t0))
@@ -551,17 +586,16 @@ class DataGenerator(Dataset):
             return image, pos, offset, R_flatten, T_flatten, S
 
         elif self.mode == 'attention':
-            image = (self.all_image_data[index].image / 255.0).astype(np.float32)
-            pos = self.all_image_data[index].posmap.astype(np.float32)
-            attention_mask = self.all_image_data[index].attention_mask.astype(np.float32)
+            image = (self.all_image_data[index].getImage() / 255.0).astype(np.float32)
+            pos = self.all_image_data[index].getPosmap().astype(np.float32)
+            attention_mask = self.all_image_data[index].getAttentionMask().astype(np.float32)
             if self.is_aug:
                 image, pos, attention_mask = augmentation.attentionAugment_torch(image, pos, attention_mask)
-                image = (image * 255.0).astype(np.uint8)
-                image = self.augment(image)
-                # image=augmentation.prnAugment(image)
-                # #image = self.no_augment(image)
+                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                image = self.toTensor(image)
             else:
-                image = self.no_augment(image)
+                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                image = self.toTensor(image)
             pos = pos / 280.
             pos = self.toTensor(pos)
             attention_mask = Image.fromarray(attention_mask)
@@ -571,11 +605,10 @@ class DataGenerator(Dataset):
             return image, pos, attention_mask
 
         elif self.mode == 'quaternionoffset':
-            image = (self.all_image_data[index].image / 255.).astype(np.float32)
-            pos = self.all_image_data[index].posmap.astype(np.float32)
-            offset = self.all_image_data[index].offset_posmap.astype(np.float32)
-
-            bbox_info = self.all_image_data[index].bbox_info
+            image = (self.all_image_data[index].getImage() / 255.).astype(np.float32)
+            pos = self.all_image_data[index].getPosmap().astype(np.float32)
+            offset = self.all_image_data[index].getOffsetPosmap().astype(np.float32)
+            bbox_info = self.all_image_data[index].getBboxInfo()
             trans_mat = bbox_info['TformOffset']
 
             if self.is_aug:
@@ -586,11 +619,11 @@ class DataGenerator(Dataset):
                     trans_mat = R_3d.dot(trans_mat)
                     image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
                 image, pos = augmentation.prnAugment_torch(image, pos, is_rotate=False)
-                image = (image * 255.0).astype(np.uint8)
-                image = self.augment(image)
-                # 　image = self.no_augment(image)
+                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                image = self.toTensor(image)
             else:
-                image = self.no_augment(image)
+                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                image = self.toTensor(image)
 
             t0 = trans_mat[0:3, 0]
             S = np.sqrt(np.sum(t0 * t0))
@@ -619,9 +652,9 @@ class DataGenerator(Dataset):
 
         elif self.mode == 'siam':
 
-            image = (self.all_image_data[index].image / 255.).astype(np.float32)
-            pos = self.all_image_data[index].posmap.astype(np.float32)
-            offset = self.all_image_data[index].offset_posmap.astype(np.float32)
+            image = (self.all_image_data[index].getImage() / 255.).astype(np.float32)
+            pos = self.all_image_data[index].getPosmap().astype(np.float32)
+            offset = self.all_image_data[index].getOffsetPosmap().astype(np.float32)
 
             if self.is_aug:
                 if np.random.rand() > 0.75:
@@ -629,11 +662,11 @@ class DataGenerator(Dataset):
                     rot_angle = rot_angle / 180. * np.pi
                     image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
                 image, pos = augmentation.prnAugment_torch(image, pos, is_rotate=False)
-                image = (image * 255.0).astype(np.uint8)
-                image = self.augment(image)
-                # 　image = self.no_augment(image)
+                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                image = self.toTensor(image)
             else:
-                image = self.no_augment(image)
+                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                image = self.toTensor(image)
 
             pos = pos / 280.
             offset = offset / 4.
@@ -648,7 +681,7 @@ class DataGenerator(Dataset):
         return len(self.all_image_data)
 
 
-def getDataLoader(all_image_data, mode='posmap', batch_size=16, is_shuffle=False, is_aug=False):
-    dataset = DataGenerator(all_image_data=all_image_data, mode=mode, is_aug=is_aug)
-    train_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=is_shuffle, num_workers=0, pin_memory=True)
+def getDataLoader(all_image_data, mode='posmap', batch_size=16, is_shuffle=False, is_aug=False, is_pre_read=True):
+    dataset = DataGenerator(all_image_data=all_image_data, mode=mode, is_aug=is_aug, is_pre_read=is_pre_read)
+    train_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=is_shuffle, num_workers=4, pin_memory=True)
     return train_loader
