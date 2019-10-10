@@ -9,7 +9,7 @@ import random
 import multiprocessing
 from augmentation import prnAugment_keras
 import threading
-from masks import getImageAttentionMask
+from masks import getImageAttentionMask, getVisibilityMask, face_mask_np3d
 
 train_data = []
 
@@ -177,6 +177,7 @@ def addImageData(data_dir):
 
 def changeImageType(data_dir):
     i = 0
+    j=0
     for root, dirs, files in os.walk(data_dir):
         for file in files:
             file_name = file.split('.')[0]
@@ -184,10 +185,19 @@ def changeImageType(data_dir):
             if file_type == 'jpg' and 'cropped' in file_name:
                 image = np.load(root + '/' + str(file_name) + '.npy')
                 posmap = np.load(root + '/' + str(file_name) + '_uv_posmap.npy')
-                mask = getImageAttentionMask(image, posmap)
-                np.save(root + '/' + str(file_name).replace('_cropped', '_attention_mask.npy'), mask)
+
+                posmap = posmap * face_mask_np3d
+                if posmap.min() < 0:
+                    j+=1
+                    print(posmap.min(),posmap.max(),j)
+                # mask = getImageAttentionMask(image, posmap)
+                # np.save(root + '/' + str(file_name).replace('_cropped', '_attention_mask.npy'), mask)
+
+                # visibility_mask = getVisibilityMask(posmap, image.shape)
+                # np.save(root + '/' + str(file_name).replace('_cropped', '_visibility_mask.npy'), visibility_mask.astype(np.uint8))
 
                 # np.save(root + '/' + str(file_name) + '.npy',image.astype(np.uint8))
+
                 print(i, file_name, end='\r')
                 i += 1
 

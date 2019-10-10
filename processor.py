@@ -14,7 +14,7 @@ from data import face_mask_np, face_mask_mean_fix_rate
 from data import bfm2Mesh, mesh2UVmap, UVmap2Mesh, renderMesh, getTransformMatrix
 from augmentation import getRotateMatrix, getRotateMatrix3D
 from numpy.linalg import inv
-from masks import getImageAttentionMask
+from masks import getImageAttentionMask,getVisibilityMask
 
 
 class DataProcessor:
@@ -265,6 +265,7 @@ class DataProcessor:
         # cropped_image = gaussNoise(cropped_image)
         # 5. save files
         attention_mask = getImageAttentionMask(cropped_image, uv_position_map)
+        visibility_mask=getVisibilityMask(uv_position_map,image_shape=cropped_image.shape)
 
         sio.savemat(self.write_dir + '/' + self.image_name + '_bbox_info.mat',
                     {'OldBbox': old_bbox, 'Bbox': bbox, 'Tform': T_2d.astype(np.float32), 'TformInv': T_2d_inv.astype(np.float32),
@@ -275,6 +276,7 @@ class DataProcessor:
         io.imsave(self.write_dir + '/' + self.image_name + '_cropped.jpg', (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
         np.save(self.write_dir + '/' + self.image_name + '_cropped.npy', (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
         np.save(self.write_dir + '/' + self.image_name + '_attention_mask.npy', attention_mask.astype(np.uint8))
+        np.save(self.write_dir + '/' + self.image_name + '_visibility_mask.npy', visibility_mask.astype(np.uint8))
 
     def processImage(self, image_path, output_dir):
         self.initialize(image_path, output_dir)
