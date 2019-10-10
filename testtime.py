@@ -187,7 +187,7 @@ def changeImageType(data_dir):
                 posmap = np.load(root + '/' + str(file_name) + '_uv_posmap.npy')
 
                 posmap = posmap * face_mask_np3d
-                if posmap.min() < 0:
+                if posmap.min() < 0 or posmap.max()>256.:
                     j+=1
                     print(posmap.min(),posmap.max(),j)
                 # mask = getImageAttentionMask(image, posmap)
@@ -208,7 +208,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='data preprocess arguments')
 
-    parser.add_argument('-i', '--inputDir', default='data/images/AFLW2000-crop', type=str,
+    parser.add_argument('-i', '--inputDir', default='data/images/AFLW2000-full', type=str,
                         help='path to the input directory, where input images are stored.')
     conf = parser.parse_args()
     changeImageType(conf.inputDir)

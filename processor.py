@@ -14,7 +14,7 @@ from data import face_mask_np, face_mask_mean_fix_rate
 from data import bfm2Mesh, mesh2UVmap, UVmap2Mesh, renderMesh, getTransformMatrix
 from augmentation import getRotateMatrix, getRotateMatrix3D
 from numpy.linalg import inv
-from masks import getImageAttentionMask,getVisibilityMask
+from masks import getImageAttentionMask, getVisibilityMask
 
 
 class DataProcessor:
@@ -217,13 +217,13 @@ class DataProcessor:
         T_2d[2, 2] = 1.
         T_2d[0:2, 2] = T_3d[0:2, 3]
 
-        if self.is_augment:
-            angle = np.random.randint(-45, 45)
-            angle = angle / 180. * np.pi
-            [T_rotate_2d, _] = getRotateMatrix(angle, [crop_h, crop_w, crop_c])
-            T_2d = T_rotate_2d.dot(T_2d)
-            [T_rotate_3d, _] = getRotateMatrix3D(angle, [crop_h, crop_w, crop_c])
-            T_3d = T_rotate_3d.dot(T_3d)
+        # if self.is_augment:
+        #     angle = np.random.randint(-45, 45)
+        #     angle = angle / 180. * np.pi
+        #     [T_rotate_2d, _] = getRotateMatrix(angle, [crop_h, crop_w, crop_c])
+        #     T_2d = T_rotate_2d.dot(T_2d)
+        #     [T_rotate_3d, _] = getRotateMatrix3D(angle, [crop_h, crop_w, crop_c])
+        #     T_3d = T_rotate_3d.dot(T_3d)
 
         T_2d_inv = inv(T_2d)
         cropped_image = skimage.transform.warp(self.init_image, T_2d_inv, output_shape=(crop_h, crop_w))
@@ -264,8 +264,11 @@ class DataProcessor:
         #     cropped_image = unchangeAugment(cropped_image)
         # cropped_image = gaussNoise(cropped_image)
         # 5. save files
-        attention_mask = getImageAttentionMask(cropped_image, uv_position_map)
-        visibility_mask=getVisibilityMask(uv_position_map,image_shape=cropped_image.shape)
+        if self.is_augment:
+            attention_mask = getImageAttentionMask(cropped_image, uv_position_map)
+            visibility_mask = getVisibilityMask(uv_position_map, cropped_image.shape)
+            np.save(self.write_dir + '/' + self.image_name + '_attention_mask.npy', attention_mask.astype(np.uint8))
+            np.save(self.write_dir + '/' + self.image_name + '_visibility_mask.npy', visibility_mask.astype(np.uint8))
 
         sio.savemat(self.write_dir + '/' + self.image_name + '_bbox_info.mat',
                     {'OldBbox': old_bbox, 'Bbox': bbox, 'Tform': T_2d.astype(np.float32), 'TformInv': T_2d_inv.astype(np.float32),
@@ -275,8 +278,6 @@ class DataProcessor:
         np.save(self.write_dir + '/' + self.image_name + '_offset_posmap.npy', uv_offset_map.astype(np.float32))
         io.imsave(self.write_dir + '/' + self.image_name + '_cropped.jpg', (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
         np.save(self.write_dir + '/' + self.image_name + '_cropped.npy', (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
-        np.save(self.write_dir + '/' + self.image_name + '_attention_mask.npy', attention_mask.astype(np.uint8))
-        np.save(self.write_dir + '/' + self.image_name + '_visibility_mask.npy', visibility_mask.astype(np.uint8))
 
     def processImage(self, image_path, output_dir):
         self.initialize(image_path, output_dir)
@@ -396,13 +397,13 @@ if __name__ == "__main__":
 
     parser.add_argument('-b', '--bboxExtendRate', default=1.5, type=float,
                         help='extend rate of bounding box of cropped face')
-    parser.add_argument('-m', '--margin', default=0.1, type=float,
+    parser.add_argument('-m', '--margin', default=0.0, type=float,
                         help='margin for the bbox')
     parser.add_argument('-a', '--isAugment', default=False, type=ast.literal_eval,
                         help='do augmentation or not')
     parser.add_argument('--isOldKpt', default=False, type=ast.literal_eval,
                         help='for 300W there is no pt68_3d')
-    parser.add_argument('--isOffset', default=False, type=ast.literal_eval)
+    parser.add_argument('--isOffset', default=True, type=ast.literal_eval)
     conf = parser.parse_args()
 
     if not conf.isSingle:
