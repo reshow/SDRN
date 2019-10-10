@@ -9,12 +9,12 @@ import ast
 import copy
 import multiprocessing
 import math
-from torchdata import default_init_image_shape, default_cropped_image_shape, default_uvmap_shape, uv_coords, bfm
-from torchdata import face_mask_np, face_mask_mean_fix_rate
-from torchdata import bfm2Mesh, mesh2UVmap, UVmap2Mesh, renderMesh, getTransformMatrix
+from data import default_init_image_shape, default_cropped_image_shape, default_uvmap_shape, uv_coords, bfm
+from data import face_mask_np, face_mask_mean_fix_rate
+from data import bfm2Mesh, mesh2UVmap, UVmap2Mesh, renderMesh, getTransformMatrix
 from augmentation import getRotateMatrix, getRotateMatrix3D
 from numpy.linalg import inv
-from attention import getImageAttentionMask
+from masks import getImageAttentionMask
 
 
 class DataProcessor:

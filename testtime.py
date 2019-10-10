@@ -3,13 +3,13 @@ import numpy as np
 import scipy.io as sio
 from skimage import io, transform
 import math
-from torchdata import ImageData
+from dataloader import ImageData
 import os
 import random
 import multiprocessing
 from augmentation import prnAugment_keras
 import threading
-from attention import getImageAttentionMask
+from masks import getImageAttentionMask
 
 train_data = []
 

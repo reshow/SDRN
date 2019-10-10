@@ -1,5 +1,3 @@
-import os
-import sys
 import numpy as np
 import scipy.io as sio
 from skimage import io
@@ -7,9 +5,7 @@ from faceutil import mesh
 # from data import bfm, modelParam2Mesh, UVMap2Mesh
 import matplotlib.pyplot as plt
 from skimage import io, transform
-# from test import readUVKpt
-# import open3d as o3d
-from torchdata import UVmap2Mesh, uv_kpt, bfm2Mesh, getLandmark, mesh2UVmap, bfm
+from data import UVmap2Mesh, uv_kpt, bfm2Mesh, getLandmark, mesh2UVmap, bfm
 
 
 def showLandmark(image, kpt):

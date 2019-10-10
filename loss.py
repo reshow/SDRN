@@ -1,7 +1,8 @@
 import numpy as np
 from skimage import io, transform
-from torchdata import uv_kpt
-from torchdata import face_mask_np, face_mask_mean_fix_rate, toTensor
+from data import uv_kpt
+from data import face_mask_np, face_mask_mean_fix_rate
+from dataloader import toTensor
 import torch
 import torch.nn.functional as F
 import torch.nn as nn

@@ -1,5 +1,4 @@
 import numpy as np
-import os
 
 
 def Tnorm_VnormC(normt, tri, ntri, nver):

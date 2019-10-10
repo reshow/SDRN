@@ -20,7 +20,13 @@
         Non-trainable params: 11,890
 
 
-$NME_{3Dlandmark}=\frac{1}{N}\sum_{i=0}^{67}(\frac{\|x_{i}-y_{i}\|}{d})$
+### running log
+    (with wightmask*16)
+        momentum0.01: 10.9 15:20 (gpu1  tb 输入zscore了)
+        momentum0.5: 10.9 17:50  (gpu1 init   输入进行了z-score normalize)
+        momentum0.01: 10.9 18:14 (gpu1 train 输入进行了z-score normalize  )
+                 0.5  10.9 20         18:49 gpu4 qua
+
 
 
 

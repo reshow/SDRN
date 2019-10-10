@@ -11,10 +11,10 @@ import scipy.io as sio
 import copy
 from visualize import show, showMesh, showImage, showLandmark, showLandmark2
 import pickle
-from torchdata import ImageData
+from dataloader import ImageData
 from torchmodel import TorchNet
-from torchdata import getDataLoader, DataGenerator
-from torchloss import getErrorFunction, getLossFunction
+from dataloader import getDataLoader, DataGenerator
+from loss import getErrorFunction, getLossFunction
 import torch
 from torch.utils.tensorboard import SummaryWriter
 

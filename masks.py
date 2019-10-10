@@ -1,6 +1,6 @@
 import numpy as np
 import numba
-from torchdata import UVmap2Mesh, uv_kpt, bfm2Mesh, getLandmark, mesh2UVmap, bfm, face_mask_np
+from data import UVmap2Mesh, uv_kpt, bfm2Mesh, getLandmark, mesh2UVmap, bfm, face_mask_np
 from faceutil import mesh
 import cv2
 

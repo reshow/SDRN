@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchmodule import *
-from torchloss import getLossFunction
+from loss import getLossFunction
 
 
 class InitLoss(nn.Module):

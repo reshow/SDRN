@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from torchdata import mean_posmap, uv_kpt
-import skimage
+from data import mean_posmap, uv_kpt
+from skimage import io,transform
 
 
 # Hout​=(Hin​−1)stride[0]−2padding[0]+kernels​ize[0]+outputp​adding[0]
@@ -13,7 +13,7 @@ class Conv2d_BN_AC2(nn.Module):
         super(Conv2d_BN_AC2, self).__init__()
         self.conv = nn.Conv2d(in_channels=in_channels, out_channels=out_channels,
                               kernel_size=kernel_size, stride=stride, padding=padding, padding_mode=padding_mode, bias=False)
-        self.bn = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.01)
+        self.bn = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.5)
         self.ac = nn.ReLU(inplace=True)
 
     def forward(self, x):
@@ -36,7 +36,7 @@ class Conv2d_BN_AC(nn.Module):
         self.pipe = nn.Sequential(
             nn.Conv2d(in_channels=in_channels, out_channels=out_channels,
                       kernel_size=kernel_size, stride=stride, padding=padding, padding_mode=padding_mode, bias=False),
-            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.01),
+            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.5),
             nn.ReLU(inplace=True))
 
     def forward(self, x):
@@ -51,7 +51,7 @@ class ConvTranspose2d_BN_AC(nn.Module):
                                          kernel_size=kernel_size, stride=stride, padding=(kernel_size - 1) // 2, output_padding=stride - 1, bias=False)
 
         self.BN_AC = nn.Sequential(
-            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.01),
+            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.5),
             activation)
 
         self.crop_size = (kernel_size + 1) % 2
@@ -75,7 +75,7 @@ class ConvTranspose2d_BN_AC2(nn.Module):
                                                            kernel_size=kernel_size, stride=stride, padding=3, bias=False))
 
         self.BN_AC = nn.Sequential(
-            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.01),
+            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.5),
             activation)
 
     def forward(self, x):
@@ -110,7 +110,7 @@ class PRNResBlock(nn.Module):
                 nn.Conv2d(in_channels=in_channels, out_channels=out_channels, stride=stride, kernel_size=1, bias=False),
             )
         self.BN_AC = nn.Sequential(
-            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.01),
+            nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.5),
             nn.ReLU(inplace=True)
         )
 
@@ -271,7 +271,7 @@ class EstimateRebuildModule(nn.Module):
 
             srckpt = offsetmap_np[i][uv_kpt[:, 0], uv_kpt[:, 1]]
             dstkpt = temp_kptmap[uv_kpt[:, 0], uv_kpt[:, 1]]
-            tform = skimage.transform.estimate_transform('similarity', srckpt, dstkpt)
+            tform = transform.estimate_transform('similarity', srckpt, dstkpt)
             offsetmap_np[i] = offsetmap_np[i].dot(tform.params[0:3, 0:3].T) + tform.params[0:3, 3]
 
         outpos = torch.from_numpy(offsetmap_np).to(self.mean_posmap_tensor.device)
