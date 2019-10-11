@@ -199,8 +199,8 @@ def attentionAugment_torch(x, y, attention, is_rotate=True):
         x, attention = randomMaskErase(x, attention)
     if np.random.rand() > 0.5:
         x = channelScale(x)
-    if np.random.rand() > 0.9:
-        x = gaussNoise(x)
+    # if np.random.rand() > 0.9:
+    #     x = gaussNoise(x)
     return x, y, attention
 
 

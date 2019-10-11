@@ -51,30 +51,23 @@ class NetworkManager:
         self.is_pre_read = args.isPreRead
 
         # 0: normal PRN [image posmap]  1: offset [image offset R T S]
-        self.data_mode = 0
         self.weight_decay = 0.0001
 
         self.criterion = None
         self.metrics = None
+        # id   model_builder  data_loader_mode   #of metrics number   #of getitem elem
+        self.mode_dict = {'InitPRN': [0, self.net.buildInitPRN, 'posmap', 1, 1],
+                          'OffsetPRN': [1, self.net.buildOffsetPRN, 'offset', 5, 5],
+                          'AttentionPRN': [2, self.net.buildAttentionPRN, 'attention', 2, 2],
+                          'QuaternionOffsetPRN': [3, self.net.buildQuaternionOffsetPRN, 'quaternion', 4, 4],
+                          'SiamPRN': [4, self.net.buildSiamPRN, 'siam', 3, 2]}
+        self.mode = self.mode_dict['InitPRN']
 
     def buildModel(self, args):
         print('building', args.netStructure)
-        if args.netStructure == 'InitPRN':
-            self.data_mode = 0
-            self.net.buildInitPRN()
-
-        elif args.netStructure == 'OffsetPRN':
-            self.data_mode = 1
-            self.net.buildOffsetPRN()
-        elif args.netStructure == 'AttentionPRN':
-            self.data_mode = 2
-            self.net.buildAttentionPRN()
-        elif args.netStructure == 'QuaternionOffsetPRN':
-            self.data_mode = 3
-            self.net.buildQuaternionOffsetPRN()
-        elif args.netStructure == 'SiamPRN':
-            self.data_mode = 4
-            self.net.buildSiamPRN()
+        if args.netStructure in self.mode_dict.keys():
+            self.mode = self.mode_dict[args.netStructure]
+            self.mode[1]()
         else:
             print('unknown network structure')
 
@@ -138,31 +131,10 @@ class NetworkManager:
         # for name, param in model.named_parameters():
         #     if 'weight' in name:
         #         l2_weight_loss += torch.norm(param, 2)
-        if self.data_mode == 1:
-            train_data_loader = getDataLoader(self.train_data, mode='offset', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
-                                              is_pre_read=self.is_pre_read)
-            val_data_loader = getDataLoader(self.val_data, mode='offset', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
-                                            is_pre_read=self.is_pre_read)
-        elif self.data_mode == 2:
-            train_data_loader = getDataLoader(self.train_data, mode='attention', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
-                                              is_pre_read=self.is_pre_read)
-            val_data_loader = getDataLoader(self.val_data, mode='attention', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
-                                            is_pre_read=self.is_pre_read)
-        elif self.data_mode == 3:
-            train_data_loader = getDataLoader(self.train_data, mode='quaternionoffset', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
-                                              is_pre_read=self.is_pre_read)
-            val_data_loader = getDataLoader(self.val_data, mode='quaternionoffset', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
-                                            is_pre_read=self.is_pre_read)
-        elif self.data_mode == 4:
-            train_data_loader = getDataLoader(self.train_data, mode='siam', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
-                                              is_pre_read=self.is_pre_read)
-            val_data_loader = getDataLoader(self.val_data, mode='siam', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
-                                            is_pre_read=self.is_pre_read)
-        else:
-            train_data_loader = getDataLoader(self.train_data, mode='posmap', batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
-                                              is_pre_read=self.is_pre_read)
-            val_data_loader = getDataLoader(self.val_data, mode='posmap', batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
-                                            is_pre_read=self.is_pre_read)
+        train_data_loader = getDataLoader(self.train_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
+                                          is_pre_read=self.is_pre_read)
+        val_data_loader = getDataLoader(self.val_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
+                                        is_pre_read=self.is_pre_read)
 
         for epoch in range(self.start_epoch, self.epoch):
             print('Epoch: %d' % epoch)
@@ -172,194 +144,69 @@ class NetworkManager:
 
             sum_loss = 0.0
             t_start = time.time()
-            if self.data_mode == 1:
-                sum_metric_loss = np.zeros(5)
-            elif self.data_mode == 2:
-                sum_metric_loss = np.zeros(2)
-            elif self.data_mode == 3:
-                sum_metric_loss = np.zeros(4)
-            elif self.data_mode == 4:
-                sum_metric_loss = np.zeros(3)
-            else:
-                sum_metric_loss = 0.0
+            num_output = self.mode[3]
+            num_input = self.mode[4]
+            sum_metric_loss = np.zeros(num_output)
+
             for i, data in enumerate(train_data_loader):
                 # 准备数据
-                if self.data_mode == 1:
-                    x = data[0]
-                    x = x.to(self.net.device).float()
-                    y = [data[j] for j in range(1, 6)]
-                    for j in range(5):
-                        y[j] = y[j].to(x.device).float()
-                    optimizer.zero_grad()
+                x = data[0]
+                x = x.to(self.net.device).float()
+                y = [data[j] for j in range(1, 1 + num_input)]
+                for j in range(num_input):
+                    y[j] = y[j].to(x.device).float()
+                optimizer.zero_grad()
+                if self.mode[0] == 1:
                     outputs = model(x, y[0], y[1], y[2], y[3], y[4])
-                    loss = torch.mean(outputs[0])
-                    metrics_loss = [torch.mean(outputs[j]) for j in range(1, 6)]
-                    loss.backward()
-                    optimizer.step()
-                    sum_loss += loss.item()
-                    print('\r', end='')
-                    print('[epoch:%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch, i + 1, total_itr_num, int(time.time() - t_start), sum_loss / (i + 1)),
-                          end='')
-                    for j in range(5):
-                        sum_metric_loss[j] += metrics_loss[j]
-                        print(' Metrics%d: %.04f ' % (j, sum_metric_loss[j] / (i + 1)), end='')
-                elif self.data_mode == 2:
-                    x = data[0]
-                    y = [data[j] for j in range(1, 3)]
-                    for j in range(2):
-                        y[j] = y[j].to(x.device).float()
-                    optimizer.zero_grad()
+                elif self.mode[0] == 2:
                     outputs = model(x, y[0], y[1])
-                    loss = torch.mean(outputs[0])
-                    metrics_loss = [torch.mean(outputs[j]) for j in range(1, 3)]
-                    loss.backward()
-                    optimizer.step()
-                    sum_loss += loss.item()
-                    print('\r', end='')
-                    print('[epoch:%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch, i + 1, total_itr_num, int(time.time() - t_start), sum_loss / (i + 1)),
-                          end='')
-                    for j in range(2):
-                        sum_metric_loss[j] += metrics_loss[j]
-                        print(' Metrics%d: %.04f ' % (j, sum_metric_loss[j] / (i + 1)), end='')
-                elif self.data_mode == 3:
-                    x = data[0]
-                    y = [data[j] for j in range(1, 5)]
-                    for j in range(4):
-                        y[j] = y[j].to(x.device).float()
-                    optimizer.zero_grad()
+                elif self.mode[0] == 3:
                     outputs = model(x, y[0], y[1], y[2], y[3])
-                    loss = torch.mean(outputs[0])
-                    metrics_loss = [torch.mean(outputs[j]) for j in range(1, 5)]
-                    loss.backward()
-                    optimizer.step()
-                    sum_loss += loss.item()
-                    print('\r', end='')
-                    print('[epoch:%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch, i + 1, total_itr_num, int(time.time() - t_start), sum_loss / (i + 1)),
-                          end='')
-                    for j in range(4):
-                        sum_metric_loss[j] += metrics_loss[j]
-                        print(' Metrics%d: %.04f ' % (j, sum_metric_loss[j] / (i + 1)), end='')
-                elif self.data_mode == 4:
-                    x = data[0]
-                    y = [data[j] for j in range(1, 3)]
-                    for j in range(2):
-                        y[j] = y[j].to(x.device).float()
-                    optimizer.zero_grad()
+                elif self.mode[0] == 4:
                     outputs = model(x, y[0], y[1])
-                    loss = torch.mean(outputs[0])
-                    metrics_loss = [torch.mean(outputs[j]) for j in range(1, 4)]
-                    loss.backward()
-                    optimizer.step()
-                    sum_loss += loss.item()
-                    print('\r', end='')
-                    print('[epoch:%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch, i + 1, total_itr_num, int(time.time() - t_start), sum_loss / (i + 1)),
-                          end='')
-                    for j in range(3):
-                        sum_metric_loss[j] += metrics_loss[j]
-                        print(' Metrics%d: %.04f ' % (j, sum_metric_loss[j] / (i + 1)), end='')
-                else:  # datamode==0
-                    x = data[0]
-                    y = data[1]
-                    x = x.to(self.net.device).float()
-                    y = y.to(x.device).float()
-                    optimizer.zero_grad()
-                    outputs = model(x, y)
-                    loss = outputs[0]
-                    metrics_loss = outputs[1]
-                    loss = torch.mean(loss)
-                    metrics_loss = torch.mean(metrics_loss)
-                    loss.backward()
-                    optimizer.step()
-                    sum_loss += loss.item()
-                    sum_metric_loss += metrics_loss.item()
-                    print('\r[epoch:%d, iter:%d/%d, time:%d] Loss: %.04f  Metrics: %.04f'
-                          % (epoch, i + 1, total_itr_num, int(time.time() - t_start), sum_loss / (i + 1), sum_metric_loss / (i + 1)), end='')
+                else:
+                    outputs = model(x, y[0])
+
+                loss = torch.mean(outputs[0])
+                metrics_loss = [torch.mean(outputs[j]) for j in range(1, 1 + num_output)]
+                loss.backward()
+                optimizer.step()
+                sum_loss += loss.item()
+                print('\r', end='')
+                print('[epoch:%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch, i + 1, total_itr_num, int(time.time() - t_start), sum_loss / (i + 1)),
+                      end='')
+                for j in range(num_output):
+                    sum_metric_loss[j] += metrics_loss[j]
+                    print(' Metrics%d: %.04f ' % (j, sum_metric_loss[j] / (i + 1)), end='')
 
             # validation
             print("\nWaiting Test!", end='\r')
             with torch.no_grad():
-                if self.data_mode == 1:
-                    val_sum_metric_loss = np.zeros(5)
-                elif self.data_mode == 2:
-                    val_sum_metric_loss = np.zeros(2)
-                elif self.data_mode == 3:
-                    val_sum_metric_loss = np.zeros(4)
-                elif self.data_mode == 4:
-                    val_sum_metric_loss = np.zeros(3)
-                else:
-                    val_sum_metric_loss = 0.0
+                val_sum_metric_loss = np.zeros(self.mode[3])
                 model.eval()
                 for data in val_data_loader:
-                    if self.data_mode == 1:
-                        x = data[0]
-                        x = x.to(self.net.device).float()
-                        y = [data[j] for j in range(1, 6)]
-                        for j in range(5):
-                            y[j] = y[j].to(self.net.device).float()
+                    x = data[0]
+                    x = x.to(self.net.device).float()
+                    y = [data[j] for j in range(1, 1 + num_input)]
+                    for j in range(num_input):
+                        y[j] = y[j].to(x.device).float()
+                    if self.mode[0] == 1:
                         outputs = model(x, y[0], y[1], y[2], y[3], y[4])
-                        metrics_loss = [torch.mean(outputs[j]) for j in range(1, 6)]
-                        for j in range(5):
-                            val_sum_metric_loss[j] += metrics_loss[j]
-                    elif self.data_mode == 2:
-                        x = data[0]
-                        x = x.to(self.net.device).float()
-                        y = [data[j] for j in range(1, 3)]
-                        for j in range(2):
-                            y[j] = y[j].to(self.net.device).float()
+                    elif self.mode[0] == 2:
                         outputs = model(x, y[0], y[1])
-                        metrics_loss = [torch.mean(outputs[j]) for j in range(1, 3)]
-                        for j in range(2):
-                            val_sum_metric_loss[j] += metrics_loss[j]
-                    elif self.data_mode == 3:
-                        x = data[0]
-                        x = x.to(self.net.device).float()
-                        y = [data[j] for j in range(1, 5)]
-                        for j in range(4):
-                            y[j] = y[j].to(self.net.device).float()
+                    elif self.mode[0] == 3:
                         outputs = model(x, y[0], y[1], y[2], y[3])
-                        metrics_loss = [torch.mean(outputs[j]) for j in range(1, 5)]
-                        for j in range(4):
-                            val_sum_metric_loss[j] += metrics_loss[j]
-                    elif self.data_mode == 4:
-                        x = data[0]
-                        x = x.to(self.net.device).float()
-                        y = [data[j] for j in range(1, 3)]
-                        for j in range(2):
-                            y[j] = y[j].to(self.net.device).float()
+                    elif self.mode[0] == 4:
                         outputs = model(x, y[0], y[1])
-                        metrics_loss = [torch.mean(outputs[j]) for j in range(1, 4)]
-                        for j in range(3):
-                            val_sum_metric_loss[j] += metrics_loss[j]
-                    else:  # datamode==0
-                        x = data[0]
-                        y = data[1]
-                        x, y = x.to(self.net.device), y.to(self.net.device)
-                        x = x.float()
-                        y = y.float()
-                        outputs = model(x, y)
-                        metrics_loss = outputs[1]
-                        metrics_loss = torch.mean(metrics_loss)
-                        val_sum_metric_loss += metrics_loss
+                    else:
+                        outputs = model(x, y[0])
+                    metrics_loss = [torch.mean(outputs[j]) for j in range(1, 1 + num_output)]
+                    for j in range(num_output):
+                        val_sum_metric_loss[j] += metrics_loss[j]
 
-                if self.data_mode == 1:
-                    for j in range(5):
-                        print('val Metrics%d: %.04f ' % (j, val_sum_metric_loss[j] / len(val_data_loader)), end='')
-                    val_loss = val_sum_metric_loss[0]
-                elif self.data_mode == 2:
-                    for j in range(2):
-                        print('val Metrics%d: %.04f ' % (j, val_sum_metric_loss[j] / len(val_data_loader)), end='')
-                    val_loss = val_sum_metric_loss[0]
-                elif self.data_mode == 3:
-                    for j in range(4):
-                        print('val Metrics%d: %.04f ' % (j, val_sum_metric_loss[j] / len(val_data_loader)), end='')
-                    val_loss = val_sum_metric_loss[0]
-                elif self.data_mode == 4:
-                    for j in range(3):
-                        print('val Metrics%d: %.04f ' % (j, val_sum_metric_loss[j] / len(val_data_loader)), end='')
-                    val_loss = val_sum_metric_loss[0]
-                else:
-                    val_loss = val_sum_metric_loss
-                    print('val metrics: %.4f' % (val_loss / len(val_data_loader)), end='')
+                for j in range(num_output):
+                    print('val Metrics%d: %.04f ' % (j, val_sum_metric_loss[j] / len(val_data_loader)), end='')
+                val_loss = val_sum_metric_loss[0]
 
                 print('\nSaving model......', end='\r')
                 if self.gpu_num > 1:
@@ -378,30 +225,11 @@ class NetworkManager:
                     print('not improved from %.4f' % best_acc)
 
             # write log
-            if self.data_mode == 1:
-                writer.add_scalar('train/loss', sum_loss / len(train_data_loader), epoch + 1)
-                for j in range(5):
-                    writer.add_scalar('train/metrics%d' % j, sum_metric_loss[j] / len(train_data_loader), epoch + 1)
-                    writer.add_scalar('val/metrics%d' % j, val_sum_metric_loss[j] / len(val_data_loader), epoch + 1)
-            elif self.data_mode == 2:
-                writer.add_scalar('train/loss', sum_loss / len(train_data_loader), epoch + 1)
-                for j in range(2):
-                    writer.add_scalar('train/metrics%d' % j, sum_metric_loss[j] / len(train_data_loader), epoch + 1)
-                    writer.add_scalar('val/metrics%d' % j, val_sum_metric_loss[j] / len(val_data_loader), epoch + 1)
-            elif self.data_mode == 3:
-                writer.add_scalar('train/loss', sum_loss / len(train_data_loader), epoch + 1)
-                for j in range(4):
-                    writer.add_scalar('train/metrics%d' % j, sum_metric_loss[j] / len(train_data_loader), epoch + 1)
-                    writer.add_scalar('val/metrics%d' % j, val_sum_metric_loss[j] / len(val_data_loader), epoch + 1)
-            elif self.data_mode == 4:
-                writer.add_scalar('train/loss', sum_loss / len(train_data_loader), epoch + 1)
-                for j in range(3):
-                    writer.add_scalar('train/metrics%d' % j, sum_metric_loss[j] / len(train_data_loader), epoch + 1)
-                    writer.add_scalar('val/metrics%d' % j, val_sum_metric_loss[j] / len(val_data_loader), epoch + 1)
-            else:
-                writer.add_scalar('train/loss', sum_loss / len(train_data_loader), epoch + 1)
-                writer.add_scalar('train/metrics0', sum_metric_loss / len(train_data_loader), epoch + 1)
-                writer.add_scalar('val/metrics0', val_sum_metric_loss / len(val_data_loader), epoch + 1)
+
+            writer.add_scalar('train/loss', sum_loss / len(train_data_loader), epoch + 1)
+            for j in range(self.mode[3]):
+                writer.add_scalar('train/metrics%d' % j, sum_metric_loss[j] / len(train_data_loader), epoch + 1)
+                writer.add_scalar('val/metrics%d' % j, val_sum_metric_loss[j] / len(val_data_loader), epoch + 1)
 
     def test(self, error_func_list=None, is_visualize=False):
         total_task = len(self.test_data)
@@ -409,47 +237,38 @@ class NetworkManager:
 
         model = self.net.model
         total_error_list = []
-        if self.data_mode == 1:
-            data_generator = DataGenerator(all_image_data=self.test_data, mode="offset", is_aug=False,is_pre_read=self.is_pre_read)
-        elif self.data_mode == 2:
-            data_generator = DataGenerator(all_image_data=self.test_data, mode="attention", is_aug=False,is_pre_read=self.is_pre_read)
-        else:
-            data_generator = DataGenerator(all_image_data=self.test_data, mode="posmap", is_aug=False,is_pre_read=self.is_pre_read)
+        num_output = self.mode[3]
+        num_input = self.mode[4]
+        data_generator = DataGenerator(all_image_data=self.test_data, mode=self.mode[2], is_aug=False, is_pre_read=self.is_pre_read)
+
         with torch.no_grad():
             model.eval()
             for i in range(len(self.test_data)):
                 data = data_generator.__getitem__(i)
-                if self.data_mode == 2:
-                    x = data[0]
-                    x = torch.unsqueeze(x, 0)
-                    x = x.to(self.net.device).float()
-                    y = [data[j] for j in range(1, 3)]
-                    for j in range(2):
-                        y[j] = y[j].to(self.net.device).float()
-                        y[j] = torch.unsqueeze(y[j], 0)
-                    outputs = model(x, y[0], y[1])
-                    p = outputs[-1]
-                    x = x.squeeze().cpu().numpy().transpose(1, 2, 0)
-                    p = p.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
-                    b = sio.loadmat(self.test_data[i].bbox_info_path)
-                    gt_y = y[0]
-                    gt_y = gt_y.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+                x = data[0]
+                x = x.to(self.net.device).float()
+                y = [data[j] for j in range(1, 1 + num_input)]
+                for j in range(num_input):
+                    y[j] = y[j].to(x.device).float()
+                    y[j] = torch.unsqueeze(y[j], 0)
 
+                if self.mode[0] == 1:
+                    outputs = model(x, y[0], y[1], y[2], y[3], y[4])
+                elif self.mode[0] == 2:
+                    outputs = model(x, y[0], y[1])
+                elif self.mode[0] == 3:
+                    outputs = model(x, y[0], y[1], y[2], y[3])
+                elif self.mode[0] == 4:
+                    outputs = model(x, y[0], y[1])
                 else:
-                    x = data[0]
-                    y = data[1]
-                    x = torch.unsqueeze(x, 0)
-                    y = torch.unsqueeze(y, 0)
-                    x, y = x.to(self.net.device), y.to(self.net.device)
-                    x = x.float()
-                    y = y.float()
-                    outputs = model(x, y)
-                    p = outputs[-1]
-                    x = x.squeeze().cpu().numpy().transpose(1, 2, 0)
-                    y = y.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
-                    p = p.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
-                    b = sio.loadmat(self.test_data[i].bbox_info_path)
-                    gt_y = y
+                    outputs = model(x, y[0])
+
+                p = outputs[-1]
+                x = x.squeeze().cpu().numpy().transpose(1, 2, 0)
+                p = p.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+                b = sio.loadmat(self.test_data[i].bbox_info_path)
+                gt_y = y[0]
+                gt_y = gt_y.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
 
                 temp_errors = []
                 for error_func_name in error_func_list:
