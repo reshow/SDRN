@@ -357,7 +357,7 @@ class AttentionModel(nn.Module):
         # self.act3 = nn.ReLU()
         # self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
         # self.act4 = nn.ReLU()
-        self.conv5 = nn.Conv2d(feature_size, 1, kernel_size=3, padding=1,bias=False)
+        self.conv5 = nn.Conv2d(feature_size, 1, kernel_size=3, padding=1, bias=False)
         self.output_act = nn.Sigmoid()
 
     def forward(self, x):
@@ -377,4 +377,8 @@ class AttentionModel(nn.Module):
         out = self.conv4(out)
         out = self.conv5(out)
         out_attention = self.output_act(out)
-        return out_attention
+
+        at2 = out_attention.clone()
+        at2[out_attention < 0.2] = 0
+        at2[out_attention > 0.8] = 1
+        return at2
