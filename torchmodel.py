@@ -573,5 +573,6 @@ class TorchNet:
             # map_location = lambda storage, loc: storage
             self.model.module.load_state_dict(torch.load(model_path))  # , map_location=map_location))
         else:
+            # self.model.load_state_dict(torch.load(model_path,map_location='cuda:0'))
             self.model.load_state_dict(torch.load(model_path))
         self.model.to(self.device)

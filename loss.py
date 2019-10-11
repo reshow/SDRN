@@ -87,6 +87,11 @@ def getLossFunction(loss_func_name='SquareError'):
 def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=False, is_gt_landmark=False, rate=1.0):
     def templateError(y_true, y_pred, bbox=None, landmarks=None):
         assert (not (is_foreface and is_landmark))
+        y_true[:, :, 2] = y_true[:, :, 2] * face_mask_np
+        y_pred[:, :, 2] = y_pred[:, :, 2] * face_mask_np
+        y_true[:, :, 2] = y_true[:, :, 2] - np.mean(y_true[:, :, 2])
+        y_pred[:, :, 2] = y_pred[:, :, 2] - np.mean(y_pred[:, :, 2])
+
         if is_landmark:
             # the gt landmark is not the same as the landmarks get from mesh using index
             if is_gt_landmark:
