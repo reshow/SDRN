@@ -4,6 +4,7 @@ import math
 import copy
 from PIL import ImageEnhance, ImageOps, ImageFile, Image
 import cv2
+import numba
 
 
 # import numba
@@ -98,6 +99,27 @@ def gaussNoise(x, mean=0, var=0.001):
     return out
 
 
+@numba.jit()
+def distortion(x):
+    marginx1 = np.random.rand() * 0.1
+    marginy1 = np.random.rand() * 0.1
+    marginx2 = np.random.rand() * 0.1
+    marginy2 = np.random.rand() * 0.1
+    height = len(x)
+    width = len(x[0])
+    out = np.zeros((height, width))
+    for i in range(height):
+        for j in range(width):
+            u = i + height * np.sin(j * marginx2 + i * j * marginy2 / height) * marginx1
+            v = j + width * np.sin(i * marginy2 + i * j * marginx1 / width) * marginy1
+            u = max(min(height - 1, u), 0)
+            v = max(min(width - 1, v), 0)
+            uu = int(u)
+            vv = int(v)
+            out[i, j] = x[uu, vv]
+    return out
+
+
 def randomErase(x, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 / 0.3, v_l=0, v_h=1.0):
     [img_h, img_w, img_c] = x.shape
     out = x.copy()
@@ -110,25 +132,32 @@ def randomErase(x, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 / 0.3, v_l=0, v_
         h = int(np.sqrt(s * r))
         left = np.random.randint(0, img_w)
         top = np.random.randint(0, img_h)
+        mask = np.zeros((img_h, img_w))
+        mask[top:min(top + h, img_h), left:min(left + w, img_w)] = 1
+        mask = distortion(mask)
         if np.random.rand() < 0.25:
             c = np.random.uniform(v_l, v_h)
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
-        elif np.random.rand()<0.75:
-            # c = np.random.random((min(top + h, img_h) - top, min(left + w, img_w) - left, 3))
-            # out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
+            out[mask > 0] = c
+        elif np.random.rand() < 0.75:
             c0 = np.random.uniform(v_l, v_h)
             c1 = np.random.uniform(v_l, v_h)
             c2 = np.random.uniform(v_l, v_h)
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :1] = c0
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :2] = c1
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :3] = c2
+            out0 = out[:, :, 0]
+            out0[mask > 0] = c0
+            out1 = out[:, :, 1]
+            out1[mask > 0] = c1
+            out2 = out[:, :, 2]
+            out2[mask > 0] = c2
         else:
             c0 = np.random.uniform(v_l, v_h)
             c1 = np.random.uniform(v_l, v_h)
             c2 = np.random.uniform(v_l, v_h)
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :1] *= c0
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :2] *= c1
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :3] *= c2
+            out0 = out[:, :, 0]
+            out0[mask > 0] *= c0
+            out1 = out[:, :, 1]
+            out1[mask > 0] *= c1
+            out2 = out[:, :, 2]
+            out2[mask > 0] *= c2
     return out
 
 
@@ -136,7 +165,7 @@ def randomMaskErase(x, attention, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 /
     [img_h, img_w, img_c] = x.shape
     out = x.copy()
     out_attention = attention.copy()
-    num = np.random.randint(1, max_num)
+    num = int(np.sqrt(np.random.randint(1, max_num * max_num)))
 
     for i in range(num):
         s = np.random.uniform(s_l, s_h) * img_h * img_w
@@ -145,19 +174,36 @@ def randomMaskErase(x, attention, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 /
         h = int(np.sqrt(s * r))
         left = np.random.randint(0, img_w)
         top = np.random.randint(0, img_h)
-        out_attention[top:min(top + h, img_h), left:min(left + w, img_w)] = 0
+
+        mask = np.zeros((img_h, img_w))
+        mask[top:min(top + h, img_h), left:min(left + w, img_w)] = 1
+        mask = distortion(mask)
         if np.random.rand() < 0.25:
+            out_attention[mask > 0] = 0
             c = np.random.uniform(v_l, v_h)
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
-        else:
-            # c = np.random.random((min(top + h, img_h) - top, min(left + w, img_w) - left, 3))
-            # out[top:min(top + h, img_h), left:min(left + w, img_w), :] = c
+            out[mask > 0] = c
+        elif np.random.rand() < 0.75:
+            out_attention[mask > 0] = 0
             c0 = np.random.uniform(v_l, v_h)
             c1 = np.random.uniform(v_l, v_h)
             c2 = np.random.uniform(v_l, v_h)
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :1] = c0
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :2] = c1
-            out[top:min(top + h, img_h), left:min(left + w, img_w), :3] = c2
+            out0 = out[:, :, 0]
+            out0[mask > 0] = c0
+            out1 = out[:, :, 1]
+            out1[mask > 0] = c1
+            out2 = out[:, :, 2]
+            out2[mask > 0] = c2
+        else:
+            c0 = np.random.uniform(v_l, v_h)
+            c1 = np.random.uniform(v_l, v_h)
+            c2 = np.random.uniform(v_l, v_h)
+            out0 = out[:, :, 0]
+            out0[mask > 0] *= c0
+            out1 = out[:, :, 1]
+            out1[mask > 0] *= c1
+            out2 = out[:, :, 2]
+            out2[mask > 0] *= c2
+
     return out, out_attention
 
 

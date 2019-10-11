@@ -234,7 +234,7 @@ class DataGenerator(Dataset):
             pos = pos / 280.
             pos = self.toTensor(pos)
             attention_mask = Image.fromarray(attention_mask)
-            attention_mask = attention_mask.resize((64, 64), Image.BILINEAR)
+            attention_mask = attention_mask.resize((32, 32), Image.BILINEAR)
             attention_mask = np.array(attention_mask)
             attention_mask = self.toTensor(attention_mask)
             return image, pos, attention_mask

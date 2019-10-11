@@ -72,9 +72,9 @@ def getTriangbleBuffer(all_triangles, posmap_around, height, width, depth_buffer
                         triangle_buffer[x, y] = id
 
 
-def getVisibilityMask(posmap, image_shape):
-    downsample_stride = 4
-    posmap_around = (np.around(posmap / downsample_stride * face_mask_np3d).clip(0, 255)).astype(np.uint8)
+def getVisibilityMask(posmap, image_shape,downsample_stride = 4):
+
+    posmap_around = (np.around(posmap / downsample_stride * face_mask_np3d).clip(1, 254)).astype(np.uint8)
     posmap_around = Image.fromarray(posmap_around)
     posmap_around = posmap_around.resize((64, 64), Image.NEAREST)
     posmap_around = np.array(posmap_around).astype(np.float32)
@@ -114,7 +114,7 @@ def getVisibilityMask(posmap, image_shape):
     visibility = Image.fromarray(visibility.astype(np.uint8))
     [height, width, channel] = image_shape
     visibility = visibility.resize((height, width), Image.NEAREST)
-    visibility = np.array(visibility)
+    visibility = np.array(visibility).astype(np.uint8)
     return visibility
 
 
