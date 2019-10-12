@@ -59,7 +59,7 @@ class NetworkManager:
         self.mode_dict = {'InitPRN': [0, self.net.buildInitPRN, 'posmap', 1, 1],
                           'OffsetPRN': [1, self.net.buildOffsetPRN, 'offset', 5, 5],
                           'AttentionPRN': [2, self.net.buildAttentionPRN, 'attention', 2, 2],
-                          'QuaternionOffsetPRN': [3, self.net.buildQuaternionOffsetPRN, 'quaternion', 4, 4],
+                          'QuaternionOffsetPRN': [3, self.net.buildQuaternionOffsetPRN, 'quaternionoffset', 4, 4],
                           'SiamPRN': [4, self.net.buildSiamPRN, 'siam', 3, 2]}
         self.mode = self.mode_dict['InitPRN']
 

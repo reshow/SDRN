@@ -42,14 +42,22 @@ def UVLoss(is_foreface=False, is_weighted=False):
     return TemplateLoss
 
 
-def ParamLoss():
+def ParamLoss(mode):
     class TemplateLoss(nn.Module):
         def __init__(self, rate=1.0):
             super(TemplateLoss, self).__init__()
             self.rate = rate
+            self.mode = mode
 
         def forward(self, y_true, y_pred):
-            dist = torch.mean(torch.abs(y_true - y_pred))
+            if self.mode == 'mae':
+                dist = torch.mean(torch.abs(y_true - y_pred))
+            elif self.mode == 'mse':
+                dist = F.mse_loss(y_pred, y_true)
+            elif self.mode == 'rmse':
+                dist = torch.mean(torch.sqrt((y_true - y_pred) ** 2))
+            else:
+                dist = F.mse_loss(y_pred, y_true)
             return dist * self.rate
 
     return TemplateLoss
@@ -77,7 +85,11 @@ def getLossFunction(loss_func_name='SquareError'):
     elif loss_func_name == 'ForefaceWeightedRootSquareError' or loss_func_name == 'fwrse':
         return UVLoss(is_foreface=True, is_weighted=True)
     elif loss_func_name == 'mae':
-        return ParamLoss()
+        return ParamLoss('mae')
+    elif loss_func_name == 'mse':
+        return ParamLoss('mse')
+    elif loss_func_name == 'rmse':
+        return ParamLoss('rmse')
     elif loss_func_name == 'bce' or loss_func_name == 'BinaryCrossEntropy':
         return MaskLoss()
     else:

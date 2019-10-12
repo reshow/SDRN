@@ -321,17 +321,18 @@ class QTRegressor(nn.Module):
         super(QTRegressor, self).__init__()
         self.pipe = nn.Sequential(
             # nn.AvgPool2d(8, stride=1),
-            nn.AdaptiveAvgPool2d((2, 2)),
+            PRNResBlock(in_channels=filters, out_channels=filters * 2, kernel_size=3, stride=2, with_conv_shortcut=True),
+            nn.AdaptiveAvgPool2d(1),
             Flatten(),
-            nn.Linear(4 * filters, 4 * filters),
-            # nn.BatchNorm1d(2*filters),
-            # nn.ReLU(),
+            nn.Linear(2 * filters, 2 * filters, bias=False),
+            nn.BatchNorm1d(2 * filters),
+            nn.ReLU()
             # nn.Linear(2*filters, 2*filters),
             # # nn.BatchNorm1d(2*filters),
             # nn.ReLU()
         )
-        self.Q_layer = nn.Sequential(nn.Linear(4 * filters, num_cluster * 4), nn.Tanh())
-        self.T2d_layer = nn.Sequential(nn.Linear(4 * filters, num_cluster * 2), nn.Tanh())
+        self.Q_layer = nn.Sequential(nn.Linear(2 * filters, num_cluster * 4))
+        self.T2d_layer = nn.Sequential(nn.Linear(2 * filters, num_cluster * 2))
 
     def forward(self, x):
         # x_new = x.detach()
