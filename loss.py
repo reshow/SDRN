@@ -55,7 +55,7 @@ def ParamLoss(mode):
             elif self.mode == 'mse':
                 dist = F.mse_loss(y_pred, y_true)
             elif self.mode == 'rmse':
-                dist = torch.mean(torch.sqrt((y_true - y_pred) ** 2))
+                dist = torch.mean(torch.sqrt(torch.sum((y_true - y_pred) ** 2, 1)))
             else:
                 dist = F.mse_loss(y_pred, y_true)
             return dist * self.rate

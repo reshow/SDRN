@@ -31,11 +31,11 @@
         
         
     (Attention)    
-        momentum0.5 attention 2019-10-11-22:20  normalized tanh attention 修改了erase方式  attention的训练添加了crop  attentionlossrante=0.2  单卡
+        momentum0.5 [attention] 2019-10-11-22:20  normalized tanh attention 修改了erase方式  attention的训练添加了crop  attentionlossrante=0.2  单卡
         
-        momentum0.5 train 2019-10-12-9:30   normalized tanh attention  lossrate=0.03
+        momentum0.5 [train] 2019-10-12-9:30   normalized tanh attention  lossrate=0.03
         
-        momentum0.5 train 2019-10-12-10:49 lossrate0.03 no clip
+        momentum0.5 [attention3] 2019-10-12-10:49 lossrate0.03 no clip  
 
 
 

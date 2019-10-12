@@ -314,9 +314,9 @@ class QuaternionOffsetLoss(nn.Module):
     def __init__(self):
         super(QuaternionOffsetLoss, self).__init__()
         self.criterion0 = getLossFunction('fwrse')(0)
-        self.criterion1 = getLossFunction('fwrse')(0.05)
-        self.criterion2 = getLossFunction('rmse')(1)
-        self.criterion3 = getLossFunction('rmse')(1)
+        self.criterion1 = getLossFunction('fwrse')(1)
+        self.criterion2 = getLossFunction('mse')(500)
+        self.criterion3 = getLossFunction('mse')(500)
         self.metrics0 = getLossFunction('frse')(1.)
         self.metrics1 = getLossFunction('frse')(1.)
         self.metrics2 = getLossFunction('mae')(1.)
