@@ -316,7 +316,7 @@ class DataGenerator(Dataset):
         return len(self.all_image_data)
 
 
-def getDataLoader(all_image_data, mode='posmap', batch_size=16, is_shuffle=False, is_aug=False, is_pre_read=True):
+def getDataLoader(all_image_data, mode='posmap', batch_size=16, is_shuffle=False, is_aug=False, is_pre_read=True, num_worker=8):
     dataset = DataGenerator(all_image_data=all_image_data, mode=mode, is_aug=is_aug, is_pre_read=is_pre_read)
-    train_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=is_shuffle, num_workers=0, pin_memory=True)
+    train_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=is_shuffle, num_workers=num_worker, pin_memory=True)
     return train_loader

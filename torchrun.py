@@ -31,6 +31,7 @@ class NetworkManager:
         self.test_data = []
 
         self.gpu_num = args.gpu
+        self.num_worker = args.numWorker
         self.batch_size = args.batchSize
 
         self.model_save_path = args.modelSavePath + save_dir_time
@@ -132,9 +133,9 @@ class NetworkManager:
         #     if 'weight' in name:
         #         l2_weight_loss += torch.norm(param, 2)
         train_data_loader = getDataLoader(self.train_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
-                                          is_pre_read=self.is_pre_read)
+                                          is_pre_read=self.is_pre_read, num_worker=self.num_worker)
         val_data_loader = getDataLoader(self.val_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
-                                        is_pre_read=self.is_pre_read)
+                                        is_pre_read=self.is_pre_read, num_worker=self.num_worker)
 
         for epoch in range(self.start_epoch, self.epoch):
             print('Epoch: %d' % epoch)
@@ -314,6 +315,7 @@ if __name__ == '__main__':
     parser.add_argument('-lr', '--learningRate', default=1e-4, type=float)
     parser.add_argument('--startEpoch', default=0, type=int)
     parser.add_argument('--isPreRead', default=True, type=ast.literal_eval)
+    parser.add_argument('--numWorker', default=8, type=int, help='loader worker number')
 
     run_args = parser.parse_args()
 
