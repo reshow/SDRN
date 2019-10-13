@@ -36,7 +36,7 @@ class NetworkManager:
 
         self.model_save_path = args.modelSavePath + save_dir_time
         if not os.path.exists(args.modelSavePath):
-            os.mkdir(self.model_save_path)
+            os.mkdir(args.modelSavePath)
         if not os.path.exists(self.model_save_path):
             os.mkdir(self.model_save_path)
 
@@ -315,7 +315,7 @@ if __name__ == '__main__':
     parser.add_argument('-lr', '--learningRate', default=1e-4, type=float)
     parser.add_argument('--startEpoch', default=0, type=int)
     parser.add_argument('--isPreRead', default=True, type=ast.literal_eval)
-    parser.add_argument('--numWorker', default=8, type=int, help='loader worker number')
+    parser.add_argument('--numWorker', default=4, type=int, help='loader worker number')
 
     run_args = parser.parse_args()
 

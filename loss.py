@@ -70,7 +70,7 @@ def MaskLoss():
             self.rate = rate
 
         def forward(self, y_true, y_pred):
-            return F.binary_cross_entropy(y_pred, y_true)
+            return F.binary_cross_entropy(y_pred, y_true)*self.rate
 
     return TemplateLoss
 

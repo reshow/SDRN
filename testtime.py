@@ -186,15 +186,15 @@ def changeImageType(data_dir):
                 image = np.load(root + '/' + str(file_name) + '.npy')
                 posmap = np.load(root + '/' + str(file_name) + '_uv_posmap.npy')
 
-                posmap = posmap * face_mask_np3d
-                if posmap.min() < 0 or posmap.max()>256.:
-                    j+=1
-                    print(posmap.min(),posmap.max(),j)
+                # posmap = posmap * face_mask_np3d
+                # if posmap.min() < 0 or posmap.max()>256.:
+                #     j+=1
+                #     print(posmap.min(),posmap.max(),j)
                 # mask = getImageAttentionMask(image, posmap)
                 # np.save(root + '/' + str(file_name).replace('_cropped', '_attention_mask.npy'), mask)
 
-                # visibility_mask = getVisibilityMask(posmap, image.shape)
-                # np.save(root + '/' + str(file_name).replace('_cropped', '_visibility_mask.npy'), visibility_mask.astype(np.uint8))
+                visibility_mask = getVisibilityMask(posmap, image.shape)
+                np.save(root + '/' + str(file_name).replace('_cropped', '_visibility_mask.npy'), visibility_mask.astype(np.uint8))
 
                 # np.save(root + '/' + str(file_name) + '.npy',image.astype(np.uint8))
 

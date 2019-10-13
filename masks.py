@@ -65,18 +65,17 @@ def getTriangbleBuffer(all_triangles, posmap_around, height, width, depth_buffer
         for y in range(y_min, y_max + 1):
             for x in range(x_min, x_max + 1):
                 p = np.array([y, x])
-                if p[0] < 2 or p[0] > height - 3 or p[1] < 2 or p[1] > width - 3 or isPointInTriangle(p, p0[:2], p1[:2], p2[:2]):
+                if isPointInTriangle(p, p0[:2], p1[:2], p2[:2]):
                     p_depth = p0[2] / 3 + p1[2] / 3 + p2[2] / 3
                     if p_depth > depth_buffer[x, y]:
                         depth_buffer[x, y] = p_depth
                         triangle_buffer[x, y] = id
 
 
-def getVisibilityMask(posmap, image_shape,downsample_stride = 4):
-
-    posmap_around = (np.around(posmap / downsample_stride * face_mask_np3d).clip(1, 254)).astype(np.uint8)
+def getVisibilityMask(posmap, image_shape, downsample_stride=4):
+    posmap_around = (np.around(posmap / downsample_stride * face_mask_np3d).clip(0, 255/downsample_stride)).astype(np.uint8)
     posmap_around = Image.fromarray(posmap_around)
-    posmap_around = posmap_around.resize((64, 64), Image.NEAREST)
+    posmap_around = posmap_around.resize((int(256 / downsample_stride), int(256 / downsample_stride)), Image.NEAREST)
     posmap_around = np.array(posmap_around).astype(np.float32)
 
     [height, width, channel] = image_shape
@@ -112,8 +111,7 @@ def getVisibilityMask(posmap, image_shape,downsample_stride = 4):
             visibility[t[2, 0], t[2, 1]] = 1
 
     visibility = Image.fromarray(visibility.astype(np.uint8))
-    [height, width, channel] = image_shape
-    visibility = visibility.resize((height, width), Image.NEAREST)
+    visibility = visibility.resize((256, 256), Image.NEAREST)
     visibility = np.array(visibility).astype(np.uint8)
     return visibility
 
@@ -149,16 +147,16 @@ if __name__ == '__main__':
     import time, visualize
 
     a = ImageData()
-    a.readPath('data/images/AFLW2000-crop/image00004')
+    a.readPath('data/images/AFLW2000-crop/image00026')
     a.readFile('offset')
-    trans_mat = a.bbox_info['TformOffset']
-    R = trans_mat[0:3, 0:3]
-    mask = getAngleVisibility(R, posmap_shape=a.posmap.shape)
-    visualize.showImage(mask)
+    # trans_mat = a.bbox_info['TformOffset']
+    # R = trans_mat[0:3, 0:3]
+    # mask = getAngleVisibility(R, posmap_shape=a.posmap.shape)
+    # visualize.showImage(mask)
 
-    # print(time.time())
-    # for i in range(30):
-    #     mask = getVisibilityMask(posmap, image.shape)
-    #     # visualize.showImage(mask)
-    #     print(i)
-    # print(time.time())
+    t1 = time.time()
+    for i in range(1):
+        mask = getVisibilityMask(a.posmap, a.image.shape, 1)
+        visualize.showImage(mask)
+        print(i)
+    print(time.time() - t1)
