@@ -85,7 +85,7 @@ class ConvTranspose2d_BN_AC2(nn.Module):
 
 
 class PRNResBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, with_conv_shortcut=False):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, with_conv_shortcut=False, activation=nn.ReLU(inplace=True)):
         super(PRNResBlock, self).__init__()
 
         if kernel_size % 2 == 1:
@@ -111,7 +111,7 @@ class PRNResBlock(nn.Module):
             )
         self.BN_AC = nn.Sequential(
             nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.5),
-            nn.ReLU(inplace=True)
+            activation
         )
 
     def forward(self, x):
@@ -383,3 +383,26 @@ class AttentionModel(nn.Module):
         at2[out_attention < 0.2] = 0
         at2[out_attention > 0.8] = 1
         return at2
+
+
+class MeanQTRegressor(nn.Module):
+    def __init__(self, num_cluster=10, filters=512):
+        super(MeanQTRegressor, self).__init__()
+        self.pipe = nn.Sequential(
+            # nn.AvgPool2d(8, stride=1),
+            PRNResBlock(in_channels=filters, out_channels=filters * 2, kernel_size=3, stride=2, with_conv_shortcut=True),
+            # PRNResBlock(in_channels=filters, out_channels=filters * 2, kernel_size=3, stride=1, with_conv_shortcut=False),
+            nn.AdaptiveAvgPool2d(1),
+            Flatten()
+        )
+        self.Q_layer = nn.Linear(2 * filters, num_cluster * 4)
+        self.T2d_layer = nn.Linear(2 * filters, num_cluster * 2)
+        nn.init.normal(self.Q_layer.weight)
+        nn.init.normal(self.T2d_layer.weight)
+
+    def forward(self, x):
+        # x_new = x.detach()
+        feat = self.pipe(x)
+        Qs = self.Q_layer(feat)
+        T2ds = self.T2d_layer(feat)
+        return Qs, T2ds

@@ -285,20 +285,20 @@ class DataProcessor:
         if self.is_full_image:
             self.mesh_info = bfm2Mesh(self.bfm_info)
             [self.uv_position_map, self.uv_texture_map] = mesh2UVmap(self.mesh_info)
-            io.imsave(self.write_dir + '/' + self.image_name + '_init.jpg', self.init_image)
+            io.imsave(self.write_dir + '/' + self.image_name + '_init.jpg', (self.init_image * 255.0).clip(0, 255).astype(np.uint8))
             sio.savemat(self.write_dir + '/' + self.image_name + '_mesh.mat', self.mesh_info)
             np.save(self.write_dir + '/' + self.image_name + '_uv_posmap.npy', self.uv_position_map)
             np.save(self.write_dir + '/' + self.image_name + '_uv_texture_map.npy', self.uv_texture_map)
             if self.is_visualize:
                 mesh_image = renderMesh(self.mesh_info, self.init_image.shape)
-                io.imsave(self.write_dir + '/' + self.image_name + '_generate.jpg', mesh_image)
+                io.imsave(self.write_dir + '/' + self.image_name + '_generate.jpg', (mesh_image * 255.0).clip(0, 255).astype(np.uint8))
                 uv_texture_map = np.clip(self.uv_texture_map, 0., 1.)
-                io.imsave(self.write_dir + '/' + self.image_name + '_uv_texture_map.jpg', uv_texture_map)
+                io.imsave(self.write_dir + '/' + self.image_name + '_uv_texture_map.jpg', (uv_texture_map * 255.0).clip(0, 255).astype(np.uint8))
 
         if self.is_offset:
             self.runOffsetPosmap()
-        else:
-            self.runPosmap()
+        # else:
+        #     self.runPosmap()
         self.clear()
 
     def clear(self):
@@ -397,7 +397,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-b', '--bboxExtendRate', default=1.5, type=float,
                         help='extend rate of bounding box of cropped face')
-    parser.add_argument('-m', '--margin', default=0.0, type=float,
+    parser.add_argument('-m', '--margin', default=0.1, type=float,
                         help='margin for the bbox')
     parser.add_argument('-a', '--isAugment', default=False, type=ast.literal_eval,
                         help='do augmentation or not')

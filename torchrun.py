@@ -15,6 +15,7 @@ from dataloader import ImageData
 from torchmodel import TorchNet
 from dataloader import getDataLoader, DataGenerator
 from loss import getErrorFunction, getLossFunction
+from data import getColors
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
@@ -191,16 +192,17 @@ class NetworkManager:
                     y = [data[j] for j in range(1, 1 + num_input)]
                     for j in range(num_input):
                         y[j] = y[j].to(x.device).float()
-                    if self.mode[0] == 1:
-                        outputs = model(x, y[0], y[1], y[2], y[3], y[4])
-                    elif self.mode[0] == 2:
-                        outputs = model(x, y[0], y[1])
-                    elif self.mode[0] == 3:
-                        outputs = model(x, y[0], y[1], y[2], y[3])
-                    elif self.mode[0] == 4:
-                        outputs = model(x, y[0], y[1])
-                    else:
-                        outputs = model(x, y[0])
+                    # if self.mode[0] == 1:
+                    #     outputs = model(x, y[0], y[1], y[2], y[3], y[4])
+                    # elif self.mode[0] == 2:
+                    #     outputs = model(x, y[0], y[1])
+                    # elif self.mode[0] == 3:
+                    #     outputs = model(x, y[0], y[1], y[2], y[3])
+                    # elif self.mode[0] == 4:
+                    #     outputs = model(x, y[0], y[1])
+                    # else:
+                    #     outputs = model(x, y[0])
+                    outputs = model(x, *y)
                     metrics_loss = [torch.mean(outputs[j]) for j in range(1, 1 + num_output)]
                     for j in range(num_output):
                         val_sum_metric_loss[j] += metrics_loss[j]
@@ -252,17 +254,19 @@ class NetworkManager:
                 for j in range(num_input):
                     y[j] = y[j].to(x.device).float()
                     y[j] = torch.unsqueeze(y[j], 0)
+                x = torch.unsqueeze(x, 0)
 
-                if self.mode[0] == 1:
-                    outputs = model(x, y[0], y[1], y[2], y[3], y[4])
-                elif self.mode[0] == 2:
-                    outputs = model(x, y[0], y[1])
-                elif self.mode[0] == 3:
-                    outputs = model(x, y[0], y[1], y[2], y[3])
-                elif self.mode[0] == 4:
-                    outputs = model(x, y[0], y[1])
-                else:
-                    outputs = model(x, y[0])
+                # if self.mode[0] == 1:
+                #     outputs = model(x, y[0], y[1], y[2], y[3], y[4])
+                # elif self.mode[0] == 2:
+                #     outputs = model(x, y[0], y[1])
+                # elif self.mode[0] == 3:
+                #     outputs = model(x, y[0], y[1], y[2], y[3])
+                # elif self.mode[0] == 4:
+                #     outputs = model(x, y[0], y[1])
+                # else:
+                #     outputs = model(x, y[0])
+                outputs = model(x, *y)
 
                 p = outputs[-1]
                 x = x.squeeze().cpu().numpy().transpose(1, 2, 0)
@@ -278,7 +282,12 @@ class NetworkManager:
                     temp_errors.append(error)
                 total_error_list.append(temp_errors)
                 print(self.test_data[i].init_image_path, temp_errors)
-            mean_errors = np.mean(total_error_list, axis=0)
+                if is_visualize:
+                    if temp_errors[0] > 0.06:
+                        tex = np.load(self.test_data[i].texture_path).astype(np.float32)
+                        init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                        show([p, tex, init_image], mode='uvmap')
+                mean_errors = np.mean(total_error_list, axis=0)
             for i in range(len(error_func_list)):
                 print(error_func_list[i], mean_errors[i])
 

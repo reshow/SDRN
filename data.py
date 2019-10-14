@@ -370,4 +370,11 @@ def getMeanPosmap():
     return mean_uv_position_map
 
 
+def getColors(image, posmap):
+    [h, w, _] = image.shape
+    [uv_h, uv_w, uv_c] = posmap.shape
+    # tex = np.zeros((uv_h, uv_w, uv_c))
+    around_posmap = np.around(posmap).clip(0, h - 1).astype(np.int)
 
+    tex = image[around_posmap[:, :, 1], around_posmap[:, :, 0], :]
+    return tex

@@ -170,7 +170,7 @@ class DataGenerator(Dataset):
             trans_mat = bbox_info['TformOffset']
 
             if self.is_aug:
-                if np.random.rand() > 0.75:
+                if np.random.rand() > 0.5:
                     rot_angle = np.random.randint(-90, 90)
                     rot_angle = rot_angle / 180. * np.pi
                     R_3d, R_3d_inv = augmentation.getRotateMatrix3D(rot_angle, image.shape)
@@ -247,7 +247,7 @@ class DataGenerator(Dataset):
             trans_mat = bbox_info['TformOffset']
 
             if self.is_aug:
-                if np.random.rand() > 0.75:
+                if np.random.rand() > 0.5:
                     rot_angle = np.random.randint(-90, 90)
                     rot_angle = rot_angle / 180. * np.pi
                     R_3d, R_3d_inv = augmentation.getRotateMatrix3D(rot_angle, image.shape)
