@@ -135,6 +135,7 @@ class DataGenerator(Dataset):
         self.is_pre_read = is_pre_read
         if is_pre_read:
             i = 0
+            print('preloading')
             for data in self.all_image_data:
                 data.readFile(mode=self.mode)
                 print(i, end='\r')
@@ -239,7 +240,7 @@ class DataGenerator(Dataset):
             attention_mask = self.toTensor(attention_mask)
             return image, pos, attention_mask
 
-        elif self.mode == 'quaternionoffset':
+        elif self.mode == 'quaternionoffset' or self.mode == 'meanoffset':
             image = (self.all_image_data[index].getImage() / 255.).astype(np.float32)
             pos = self.all_image_data[index].getPosmap().astype(np.float32)
             offset = self.all_image_data[index].getOffsetPosmap().astype(np.float32)
@@ -272,6 +273,8 @@ class DataGenerator(Dataset):
             Qf = Qf * 20
             T_flatten = T_flatten / 300
 
+            # print(Qf.max(),Qf.min(),T_flatten.max(),T_flatten.min())
+
             if (abs(Qf) > 1).any():
                 print('too large Q', Qf)
 
@@ -282,7 +285,6 @@ class DataGenerator(Dataset):
             offset = offset / 4.
             pos = self.toTensor(pos)
             offset = self.toTensor(offset)
-
             return image, pos, offset, Qf, T_flatten,
 
         elif self.mode == 'siam':

@@ -40,5 +40,5 @@
         
         momentum0.5 [attention3] 2019-10-13-15:49 lossrate1 no clip  
 
-        m0.5 [attention2]  10-14-11:28  lossrate0.1  noclip
+        m0.5 [attention2]  10-15-9:28  lossrate0.1  noclip
         

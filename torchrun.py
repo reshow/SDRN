@@ -62,7 +62,8 @@ class NetworkManager:
                           'OffsetPRN': [1, self.net.buildOffsetPRN, 'offset', 5, 5],
                           'AttentionPRN': [2, self.net.buildAttentionPRN, 'attention', 2, 2],
                           'QuaternionOffsetPRN': [3, self.net.buildQuaternionOffsetPRN, 'quaternionoffset', 4, 4],
-                          'SiamPRN': [4, self.net.buildSiamPRN, 'siam', 3, 2]}
+                          'SiamPRN': [4, self.net.buildSiamPRN, 'siam', 3, 2],
+                          'MeanOffsetPRN': [3, self.net.buildMeanOffsetPRN, 'meanoffset', 4, 4]}
         self.mode = self.mode_dict['InitPRN']
 
     def buildModel(self, args):
@@ -136,7 +137,7 @@ class NetworkManager:
         train_data_loader = getDataLoader(self.train_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
                                           is_pre_read=self.is_pre_read, num_worker=self.num_worker)
         val_data_loader = getDataLoader(self.val_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
-                                        is_pre_read=self.is_pre_read, num_worker=self.num_worker)
+                                        is_pre_read=True, num_worker=self.num_worker)
 
         for epoch in range(self.start_epoch, self.epoch):
             print('Epoch: %d' % epoch)
@@ -158,16 +159,17 @@ class NetworkManager:
                 for j in range(num_input):
                     y[j] = y[j].to(x.device).float()
                 optimizer.zero_grad()
-                if self.mode[0] == 1:
-                    outputs = model(x, y[0], y[1], y[2], y[3], y[4])
-                elif self.mode[0] == 2:
-                    outputs = model(x, y[0], y[1])
-                elif self.mode[0] == 3:
-                    outputs = model(x, y[0], y[1], y[2], y[3])
-                elif self.mode[0] == 4:
-                    outputs = model(x, y[0], y[1])
-                else:
-                    outputs = model(x, y[0])
+                # if self.mode[0] == 1:
+                #     outputs = model(x, y[0], y[1], y[2], y[3], y[4])
+                # elif self.mode[0] == 2:
+                #     outputs = model(x, y[0], y[1])
+                # elif self.mode[0] == 3:
+                #     outputs = model(x, y[0], y[1], y[2], y[3])
+                # elif self.mode[0] == 4:
+                #     outputs = model(x, y[0], y[1])
+                # else:
+                #     outputs = model(x, y[0])
+                outputs = model(x, *y)
 
                 loss = torch.mean(outputs[0])
                 metrics_loss = [torch.mean(outputs[j]) for j in range(1, 1 + num_output)]
@@ -182,11 +184,15 @@ class NetworkManager:
                     print(' Metrics%d: %.04f ' % (j, sum_metric_loss[j] / (i + 1)), end='')
 
             # validation
-            print("\nWaiting Test!", end='\r')
+
             with torch.no_grad():
                 val_sum_metric_loss = np.zeros(self.mode[3])
                 model.eval()
+                val_i = 0
+                print("\nWaiting Test!", val_i, end='\r')
                 for data in val_data_loader:
+                    val_i += 1
+                    print("Waiting Test!", val_i, end='\r')
                     x = data[0]
                     x = x.to(self.net.device).float()
                     y = [data[j] for j in range(1, 1 + num_input)]

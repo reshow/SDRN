@@ -497,6 +497,115 @@ class SiamPRN(nn.Module):
         return loss, metrics_posmap, metrics_offset, metrics_kpt, posmap
 
 
+class MeanOffsetLoss(nn.Module):
+    def __init__(self):
+        super(MeanOffsetLoss, self).__init__()
+        self.criterion0 = getLossFunction('fwrse')(0)
+        self.criterion1 = getLossFunction('fwrse')(1)
+        self.criterion2 = getLossFunction('rmse')(2)
+        self.criterion3 = getLossFunction('rmse')(2)
+        self.metrics0 = getLossFunction('frse')(1.)
+        self.metrics1 = getLossFunction('frse')(1.)
+        self.metrics2 = getLossFunction('mae')(1.)
+        self.metrics3 = getLossFunction('mae')(1.)
+
+    def forward(self, posmap, offset, qs, t2ds,
+                gt_posmap, gt_offset, gt_q, gt_t,
+                num_cluster):
+        loss_posmap = self.criterion0(gt_posmap, posmap)
+        loss_offset = self.criterion1(gt_offset, offset)
+
+        loss_q = 0
+        loss_t = 0
+        assert (num_cluster % 2 == 0)
+
+        for i in range(int(num_cluster / 2)):
+            loss_q += self.criterion2(gt_q + i * 0.1, qs[:, :, i])
+            loss_t += self.criterion3(gt_t[:, 0:2] + i * 0.1, t2ds[:, :, i])
+        for i in range(int(num_cluster / 2)):
+            loss_q += self.criterion2(gt_q - i * 0.1, qs[:, :, i + int(num_cluster / 2)])
+            loss_t += self.criterion3(gt_t[:, 0:2] - i * 0.1, t2ds[:, :, i + int(num_cluster / 2)])
+
+        loss = loss_posmap + loss_offset + loss_q/num_cluster + loss_t/num_cluster
+
+        metrics_posmap = self.metrics0(gt_posmap, posmap)
+        metrics_offset = self.metrics1(gt_offset, offset)
+
+        q = torch.mean(qs, 2)
+        t2d = torch.mean(t2ds, 2)
+
+        metrics_q = self.metrics2(gt_q, q)
+        metrics_t = self.metrics3(gt_t[:, 0:2], t2d)
+        return loss, metrics_posmap, metrics_offset, metrics_q, metrics_t
+
+
+class MeanOffsetPRN(nn.Module):
+    def __init__(self):
+        super(MeanOffsetPRN, self).__init__()
+        self.feature_size = 16
+        self.num_cluster = 10
+        feature_size = self.feature_size
+        self.layer0 = Conv2d_BN_AC(in_channels=3, out_channels=feature_size, kernel_size=4, stride=1, padding=1)
+        self.encoder = nn.Sequential(
+            PRNResBlock(in_channels=feature_size, out_channels=feature_size * 2, kernel_size=4, stride=2, with_conv_shortcut=True),  # 128 x 128 x 32
+            PRNResBlock(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1, with_conv_shortcut=False),  # 128 x 128 x 32
+            PRNResBlock(in_channels=feature_size * 2, out_channels=feature_size * 4, kernel_size=4, stride=2, with_conv_shortcut=True),  # 64 x 64 x 64
+            PRNResBlock(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1, with_conv_shortcut=False),  # 64 x 64 x 64
+            PRNResBlock(in_channels=feature_size * 4, out_channels=feature_size * 8, kernel_size=4, stride=2, with_conv_shortcut=True),  # 32 x 32 x 128
+            PRNResBlock(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1, with_conv_shortcut=False),  # 32 x 32 x 128
+            PRNResBlock(in_channels=feature_size * 8, out_channels=feature_size * 16, kernel_size=4, stride=2, with_conv_shortcut=True),  # 16 x 16 x 256
+            PRNResBlock(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1, with_conv_shortcut=False),  # 16 x 16 x 256
+            PRNResBlock(in_channels=feature_size * 16, out_channels=feature_size * 32, kernel_size=4, stride=2, with_conv_shortcut=True),  # 8 x 8 x 512
+            PRNResBlock(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1, with_conv_shortcut=False),  # 8 x 8 x 512
+        )
+        self.regressor = MeanQTRegressor(num_cluster=self.num_cluster, filters=feature_size * 32)
+        self.decoder = nn.Sequential(
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1),  # 8 x 8 x 512
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 16, kernel_size=4, stride=2),  # 16 x 16 x 256
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1),  # 16 x 16 x 256
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1),  # 16 x 16 x 256
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 8, kernel_size=4, stride=2),  # 32 x 32 x 128
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1),  # 32 x 32 x 128
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1),  # 32 x 32 x 128
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 4, kernel_size=4, stride=2),  # 64 x 64 x 64
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1),  # 64 x 64 x 64
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1),  # 64 x 64 x 64
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 2, kernel_size=4, stride=2),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 1, kernel_size=4, stride=2),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=feature_size * 1, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Tanh()))
+        self.rebuilder = RPFQModule()
+        self.loss = MeanOffsetLoss()
+
+    def forward(self, inpt, gt_posmap, gt_offset, gt_q, gt_t):
+        x = self.layer0(inpt)
+        x = self.encoder(x)
+
+        qs, t2ds = self.regressor(x)
+        offset = self.decoder(x)
+
+        qs = qs.reshape(qs.shape[0], 4, self.num_cluster)
+        t2ds = t2ds.reshape(qs.shape[0], 2, self.num_cluster)
+        q = torch.mean(qs, 2)
+        t2d = torch.mean(t2ds, 2)
+
+        # posmap = self.rebuilder(offset, r, t, s)
+        t3d = torch.zeros((inpt.shape[0], 3))
+        t3d = t3d.to(t2d.device)
+        t3d[:, 0:2] = t2d
+        t3d[:, 2] = gt_t[:, 2]
+        # posmap = self.rebuilder(offset, gt_q, gt_t)
+        posmap = self.rebuilder(offset, q, t3d)
+
+        loss, metrics_posmap, metrics_offset, metrics_q, metrics_t = self.loss(posmap, offset, qs, t2ds,
+                                                                               gt_posmap, gt_offset, gt_q, gt_t,
+                                                                               self.num_cluster)
+        return loss, metrics_posmap, metrics_offset, metrics_q, metrics_t, posmap
+
+
 class TorchNet:
 
     def __init__(self,
@@ -572,6 +681,18 @@ class TorchNet:
         self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0001)
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.5)
 
+    def buildMeanOffsetPRN(self):
+
+        self.model = MeanOffsetPRN()
+
+        if self.gpu_num > 1:
+            self.model = nn.DataParallel(self.model, device_ids=self.visible_devices)
+        self.model.to(self.device)
+        # model.cuda()
+
+        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0001)
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.5)
+
     def loadWeights(self, model_path):
         if self.gpu_num > 1:
             # map_location = lambda storage, loc: storage
@@ -580,94 +701,3 @@ class TorchNet:
             # self.model.load_state_dict(torch.load(model_path,map_location='cuda:0'))
             self.model.load_state_dict(torch.load(model_path))
         self.model.to(self.device)
-
-
-class MeanOffsetLoss(nn.Module):
-    def __init__(self):
-        super(MeanOffsetLoss, self).__init__()
-        self.criterion0 = getLossFunction('fwrse')(0)
-        self.criterion1 = getLossFunction('fwrse')(1)
-        self.criterion2 = getLossFunction('mse')(500)
-        self.criterion3 = getLossFunction('mse')(500)
-        self.metrics0 = getLossFunction('frse')(1.)
-        self.metrics1 = getLossFunction('frse')(1.)
-        self.metrics2 = getLossFunction('mae')(1.)
-        self.metrics3 = getLossFunction('mae')(1.)
-
-    def forward(self, posmap, offset, q, t2d,
-                gt_posmap, gt_offset, gt_q, gt_t):
-        loss_posmap = self.criterion0(gt_posmap, posmap)
-        loss_offset = self.criterion1(gt_offset, offset)
-        loss_q = self.criterion2(gt_q, q)
-        loss_t = self.criterion3(gt_t[:, 0:2], t2d)
-        loss = loss_posmap + loss_offset + loss_q + loss_t
-
-        metrics_posmap = self.metrics0(gt_posmap, posmap)
-        metrics_offset = self.metrics1(gt_offset, offset)
-        metrics_q = self.metrics2(gt_q, q)
-        metrics_t = self.metrics3(gt_t[:, 0:2], t2d)
-        return loss, metrics_posmap, metrics_offset, metrics_q, metrics_t
-
-
-class MeanOffsetPRN(nn.Module):
-    def __init__(self):
-        super(MeanOffsetPRN, self).__init__()
-        self.feature_size = 16
-        self.num_cluster = 10
-        feature_size = self.feature_size
-        self.layer0 = Conv2d_BN_AC(in_channels=3, out_channels=feature_size, kernel_size=4, stride=1, padding=1)
-        self.encoder = nn.Sequential(
-            PRNResBlock(in_channels=feature_size, out_channels=feature_size * 2, kernel_size=4, stride=2, with_conv_shortcut=True),  # 128 x 128 x 32
-            PRNResBlock(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1, with_conv_shortcut=False),  # 128 x 128 x 32
-            PRNResBlock(in_channels=feature_size * 2, out_channels=feature_size * 4, kernel_size=4, stride=2, with_conv_shortcut=True),  # 64 x 64 x 64
-            PRNResBlock(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1, with_conv_shortcut=False),  # 64 x 64 x 64
-            PRNResBlock(in_channels=feature_size * 4, out_channels=feature_size * 8, kernel_size=4, stride=2, with_conv_shortcut=True),  # 32 x 32 x 128
-            PRNResBlock(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1, with_conv_shortcut=False),  # 32 x 32 x 128
-            PRNResBlock(in_channels=feature_size * 8, out_channels=feature_size * 16, kernel_size=4, stride=2, with_conv_shortcut=True),  # 16 x 16 x 256
-            PRNResBlock(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1, with_conv_shortcut=False),  # 16 x 16 x 256
-            PRNResBlock(in_channels=feature_size * 16, out_channels=feature_size * 32, kernel_size=4, stride=2, with_conv_shortcut=True),  # 8 x 8 x 512
-            PRNResBlock(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1, with_conv_shortcut=False),  # 8 x 8 x 512
-        )
-        self.regressor = MeanQTRegressor(num_cluster=self.num_cluster, filters=feature_size * 32)
-        self.decoder = nn.Sequential(
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1),  # 8 x 8 x 512
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 16, kernel_size=4, stride=2),  # 16 x 16 x 256
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1),  # 16 x 16 x 256
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1),  # 16 x 16 x 256
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 8, kernel_size=4, stride=2),  # 32 x 32 x 128
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1),  # 32 x 32 x 128
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1),  # 32 x 32 x 128
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 4, kernel_size=4, stride=2),  # 64 x 64 x 64
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1),  # 64 x 64 x 64
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1),  # 64 x 64 x 64
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 2, kernel_size=4, stride=2),
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1),
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 1, kernel_size=4, stride=2),
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=feature_size * 1, kernel_size=4, stride=1),
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=4, stride=1),
-            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1),
-            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Tanh()))
-        self.rebuilder = RPFQModule()
-        self.loss = MeanOffsetLoss()
-
-    def forward(self, inpt, gt_posmap, gt_offset, gt_q, gt_t):
-        x = self.layer0(inpt)
-        x = self.encoder(x)
-
-        qs, t2ds = self.regressor(x)
-        offset = self.decoder(x)
-
-        q = qs.reshape(qs.shape[0], 4, self.num_cluster)
-        t2d = t2ds.reshape(qs.shape[0], 2, self.num_cluster)
-        ####################################################TODO
-        # posmap = self.rebuilder(offset, r, t, s)
-        t3d = torch.zeros((inpt.shape[0], 3))
-        t3d = t3d.to(t2d.device)
-        t3d[:, 0:2] = t2d
-        t3d[:, 2] = gt_t[:, 2]
-        # posmap = self.rebuilder(offset, gt_q, gt_t)
-        posmap = self.rebuilder(offset, q, t3d)
-
-        loss, metrics_posmap, metrics_offset, metrics_q, metrics_t = self.loss(posmap, offset, q, t2d,
-                                                                               gt_posmap, gt_offset, gt_q, gt_t)
-        return loss, metrics_posmap, metrics_offset, metrics_q, metrics_t, posmap

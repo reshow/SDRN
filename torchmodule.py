@@ -325,7 +325,7 @@ class QTRegressor(nn.Module):
             nn.AdaptiveAvgPool2d(1),
             Flatten(),
             nn.Linear(2 * filters, 2 * filters, bias=False),
-            nn.BatchNorm1d(2 * filters),
+            nn.BatchNorm1d(2 * filters, momentum=0.5),
             nn.ReLU()
             # nn.Linear(2*filters, 2*filters),
             # # nn.BatchNorm1d(2*filters),
@@ -379,10 +379,10 @@ class AttentionModel(nn.Module):
         out = self.conv5(out)
         out_attention = self.output_act(out)
 
-        at2 = out_attention.clone()
-        at2[out_attention < 0.2] = 0
-        at2[out_attention > 0.8] = 1
-        return at2
+        # at2 = out_attention.clone()
+        # at2[out_attention < 0.2] = 0
+        # at2[out_attention > 0.8] = 1
+        return out_attention
 
 
 class MeanQTRegressor(nn.Module):
@@ -390,19 +390,24 @@ class MeanQTRegressor(nn.Module):
         super(MeanQTRegressor, self).__init__()
         self.pipe = nn.Sequential(
             # nn.AvgPool2d(8, stride=1),
-            PRNResBlock(in_channels=filters, out_channels=filters * 2, kernel_size=3, stride=2, with_conv_shortcut=True),
+            PRNResBlock(in_channels=filters, out_channels=filters * 2, kernel_size=4, stride=2, with_conv_shortcut=True),
             # PRNResBlock(in_channels=filters, out_channels=filters * 2, kernel_size=3, stride=1, with_conv_shortcut=False),
             nn.AdaptiveAvgPool2d(1),
-            Flatten()
+            Flatten(),
+            nn.Linear(2 * filters, 2 * filters, bias=False),
+            nn.BatchNorm1d(2 * filters, momentum=0.5),
+            nn.ReLU()
         )
         self.Q_layer = nn.Linear(2 * filters, num_cluster * 4)
         self.T2d_layer = nn.Linear(2 * filters, num_cluster * 2)
-        nn.init.normal(self.Q_layer.weight)
-        nn.init.normal(self.T2d_layer.weight)
+        nn.init.xavier_normal_(self.Q_layer.weight)
+        nn.init.xavier_normal_(self.T2d_layer.weight)
 
     def forward(self, x):
         # x_new = x.detach()
         feat = self.pipe(x)
         Qs = self.Q_layer(feat)
+        # Qs = nn.Tanh()(Qs)
         T2ds = self.T2d_layer(feat)
+        # T2ds = nn.Tanh()(T2ds)
         return Qs, T2ds
