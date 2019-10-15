@@ -20,7 +20,7 @@ from masks import getImageAttentionMask, getVisibilityMask
 class DataProcessor:
     def __init__(self,
                  is_full_image=False, is_visualize=True, is_augment=False, is_pt3d=False, is_offset=False,
-                 bbox_extend_rate=1.5, marg_rate=0.1):
+                 bbox_extend_rate=1.5, marg_rate=0.1, is_zero_z=False):
 
         print('bfm model loaded')
 
@@ -45,6 +45,7 @@ class DataProcessor:
         self.is_augment = is_augment
         self.is_pt3d = is_pt3d
         self.is_offset = is_offset
+        self.is_zero_z = is_zero_z
 
     def initialize(self, image_path, output_dir='data/temp'):
         self.image_path = image_path
@@ -178,7 +179,7 @@ class DataProcessor:
 
     def runOffsetPosmap(self):
         # 1. load image and fitted parameters
-        [height, width, channel] = self.image_shape
+        [height, _, _] = self.image_shape
         pose_para = self.bfm_info['Pose_Para'].T.astype(np.float32)
         shape_para = self.bfm_info['Shape_Para'].astype(np.float32)
         exp_para = self.bfm_info['Exp_Para'].astype(np.float32)
@@ -188,6 +189,9 @@ class DataProcessor:
         s = pose_para[-1, 0]
         angles = pose_para[:3, 0]
         t = pose_para[3:6, 0]
+
+        if self.is_zero_z:
+            t[2] = 0
 
         T_bfm = getTransformMatrix(s, angles, t, height)
         temp_ones_vec = np.ones((len(vertices), 1))
@@ -204,14 +208,17 @@ class DataProcessor:
         [center, size] = self.getCropBox([left, top, right, bottom])
 
         # 3.3 crop and record the transform parameters
-        [crop_h, crop_w, crop_c] = default_cropped_image_shape
+        [crop_h, crop_w, _] = default_cropped_image_shape
 
         T_3d = np.zeros((4, 4))
         T_3d[0, 0] = crop_w / size
         T_3d[1, 1] = crop_h / size
         T_3d[2, 2] = crop_w / size
         T_3d[3, 3] = 1.
-        T_3d[0:3, 3] = [(size / 2 - center[0]) * crop_w / size, (size / 2 - center[1]) * crop_h / size, -np.min(image_vertices[:, 2]) * crop_w / size]
+        if self.is_zero_z:
+            T_3d[0:3, 3] = [(size / 2 - center[0]) * crop_w / size, (size / 2 - center[1]) * crop_h / size, 0]
+        else:
+            T_3d[0:3, 3] = [(size / 2 - center[0]) * crop_w / size, (size / 2 - center[1]) * crop_h / size, -np.min(image_vertices[:, 2]) * crop_w / size]
         T_2d = np.zeros((3, 3))
         T_2d[0:2, 0:2] = T_3d[0:2, 0:2]
         T_2d[2, 2] = 1.
@@ -317,22 +324,23 @@ class DataProcessor:
         self.mesh_info = None
 
 
-def workerProcess(image_paths, output_dirs, id, conf):
-    print('worker:', id, 'start. task number:', len(image_paths))
-    data_processor = DataProcessor(bbox_extend_rate=conf.bboxExtendRate, marg_rate=conf.margin, is_pt3d=conf.isOldKpt,
-                                   is_visualize=conf.isVisualize, is_full_image=conf.isFull, is_augment=conf.isAugment, is_offset=conf.isOffset)
+def workerProcess(image_paths, output_dirs, worker_id, worker_conf):
+    print('worker:', worker_id, 'start. task number:', len(image_paths))
+    data_processor = DataProcessor(bbox_extend_rate=worker_conf.bboxExtendRate, marg_rate=worker_conf.margin, is_pt3d=worker_conf.isOldKpt,
+                                   is_visualize=worker_conf.isVisualize, is_full_image=worker_conf.isFull, is_augment=worker_conf.isAugment,
+                                   is_offset=worker_conf.isOffset, is_zero_z=worker_conf.isZeroZ)
     for i in range(len(image_paths)):
         # print('\r worker ' + str(id) + ' task ' + str(i) + '/' + str(len(image_paths)) +''+  image_paths[i])
-        print("worker {} task {}/{}  {}\r".format(str(id), str(i), str(len(image_paths)), image_paths[i]), end='')
+        print("worker {} task {}/{}  {}\r".format(str(worker_id), str(i), str(len(image_paths)), image_paths[i]), end='')
         # output_list[id] = "worker {} task {}/{}  {}".format(str(id), str(i), str(len(image_paths)), image_paths[i])
         data_processor.processImage(image_paths[i], output_dirs[i])
-    print('worker:', id, 'end')
+    print('worker:', worker_id, 'end')
 
 
-def multiProcess(conf):
-    worker_num = conf.thread
-    input_dir = conf.inputDir
-    output_dir = conf.outputDir
+def multiProcess(thread_conf):
+    worker_num = thread_conf.thread
+    input_dir = thread_conf.inputDir
+    output_dir = thread_conf.outputDir
     image_path_list = []
     output_dir_list = []
 
@@ -341,7 +349,7 @@ def multiProcess(conf):
 
     for root, dirs, files in os.walk(input_dir):
         temp_output_dir = output_dir
-        tokens = root.split(input_dir)
+        # tokens = root.split(input_dir)
         if not (root.split(input_dir)[1] == ''):
             temp_output_dir = output_dir + root.split(input_dir)[1]
             if not os.path.exists(temp_output_dir):
@@ -358,7 +366,7 @@ def multiProcess(conf):
     print('found images:', total_task)
 
     if worker_num <= 1:
-        workerProcess(image_path_list, output_dir_list, 0, conf)
+        workerProcess(image_path_list, output_dir_list, 0, thread_conf)
     elif worker_num > 1:
         jobs = []
         task_per_worker = math.ceil(total_task / worker_num)
@@ -368,7 +376,7 @@ def multiProcess(conf):
             # temp_data_processor = copy.deepcopy(data_processor)
             p = multiprocessing.Process(target=workerProcess, args=(
                 image_path_list[st_idx[i]:ed_idx[i]],
-                output_dir_list[st_idx[i]:ed_idx[i]], i, conf))
+                output_dir_list[st_idx[i]:ed_idx[i]], i, thread_conf))
             jobs.append(p)
             p.start()
 
@@ -404,6 +412,7 @@ if __name__ == "__main__":
     parser.add_argument('--isOldKpt', default=False, type=ast.literal_eval,
                         help='for 300W there is no pt68_3d')
     parser.add_argument('--isOffset', default=True, type=ast.literal_eval)
+    parser.add_argument('--isZeroZ', default=False, type=ast.literal_eval)
     conf = parser.parse_args()
 
     if not conf.isSingle:
