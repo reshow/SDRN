@@ -262,17 +262,6 @@ class NetworkManager:
                     y[j] = y[j].to(x.device).float()
                     y[j] = torch.unsqueeze(y[j], 0)
                 x = torch.unsqueeze(x, 0)
-
-                # if self.mode[0] == 1:
-                #     outputs = model(x, y[0], y[1], y[2], y[3], y[4])
-                # elif self.mode[0] == 2:
-                #     outputs = model(x, y[0], y[1])
-                # elif self.mode[0] == 3:
-                #     outputs = model(x, y[0], y[1], y[2], y[3])
-                # elif self.mode[0] == 4:
-                #     outputs = model(x, y[0], y[1])
-                # else:
-                #     outputs = model(x, y[0])
                 outputs = model(x, *y)
 
                 p = outputs[-1]
@@ -290,27 +279,31 @@ class NetworkManager:
                 total_error_list.append(temp_errors)
                 print(self.test_data[i].init_image_path, temp_errors)
                 if is_visualize:
-                    init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
-                    showImage(init_image)
-                    diff = np.square(gt_y - p) * masks.face_mask_np3d
-                    dist2d = np.sqrt(np.sum(diff[:, 0:2], axis=-1))
-                    dist3d = np.sqrt(np.sum(diff[:, 0:3], axis=-1))
-                    visibility = np.load(self.test_data[i].attention_mask_path.replace('attention', 'visibility')).astype(np.float32)
-
-                    plt.subplot(2, 2, 1)
-                    plt.imshow(init_image)
-                    plt.subplot(2, 2, 2)
-                    plt.imshow(dist2d)
-                    plt.subplot(2, 2, 3)
-                    plt.imshow(dist3d)
-                    plt.subplot(2, 2, 4)
-                    plt.imshow(visibility)
-                    plt.show()
 
                     if temp_errors[0] > 0.06:
+                        init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                        diff = np.square(gt_y - p) * masks.face_mask_np3d
+                        dist2d = np.sqrt(np.sum(diff[:, :, 0:2], axis=-1))
+                        dist3d = np.sqrt(np.sum(diff[:, :, 0:3], axis=-1))
+                        dist3 = np.sqrt(diff[:, :, 2])
+                        visibility = np.load(self.test_data[i].attention_mask_path.replace('attention', 'visibility')).astype(np.float32)
+
+                        plt.subplot(2, 3, 1)
+                        plt.imshow(init_image)
+                        plt.subplot(2, 3, 2)
+                        plt.imshow(dist2d)
+                        plt.subplot(2, 3, 3)
+                        plt.imshow(dist3d)
+                        plt.subplot(2, 3, 4)
+                        plt.imshow(dist3)
+                        plt.subplot(2, 3, 5)
+                        plt.imshow(visibility)
+                        plt.show()
+
                         tex = np.load(self.test_data[i].texture_path).astype(np.float32)
                         init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
                         show([p, tex, init_image], mode='uvmap')
+                        show([gt_y, tex, init_image], mode='uvmap')
                 mean_errors = np.mean(total_error_list, axis=0)
             for i in range(len(error_func_list)):
                 print(error_func_list[i], mean_errors[i])

@@ -378,3 +378,30 @@ def getColors(image, posmap):
 
     tex = image[around_posmap[:, :, 1], around_posmap[:, :, 0], :]
     return tex
+
+
+def getNewKptMap():
+    triangles = bfm.full_triangles
+    weight_factor_list = []
+    for i in range(68):
+        colors = np.zeros((53215, 1))
+        colors[bfm.kpt_ind[i], 0] = 100
+        uv_texture_map = mesh.render.render_colors(uv_coords, triangles, colors, 256, 256, 1).squeeze()
+        temp_weight_factor = []
+        for x in range(256):
+            for y in range(256):
+                if uv_texture_map[x, y] > 0:
+                    temp_weight_factor.append([x, y, uv_texture_map[x, y]])
+        if len(temp_weight_factor) ==0:
+            temp_weight_factor.append([uv_kpt[i,1],uv_kpt[i,0],1])
+        temp_weight_factor = np.array(temp_weight_factor)
+        total_weight = np.sum(temp_weight_factor[:, 2])
+        temp_weight_factor[:, 2] = temp_weight_factor[:, 2] / total_weight
+        weight_factor_list.append(temp_weight_factor)
+
+    kpt_mask = np.zeros((256, 256))
+    for temp_weight_factor in weight_factor_list:
+        for factor in temp_weight_factor:
+            kpt_mask[int(factor[0]), int(factor[1])] = factor[2]
+    return weight_factor_list,kpt_mask
+fl,fm=getNewKptMap()

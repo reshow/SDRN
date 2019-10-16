@@ -4,11 +4,11 @@ import pickle
 import argparse
 import os
 import math
-import multiprocessing
+import threading
 import scipy.io as sio
 
 all_data = []
-NUM_BLOCKS = 20
+NUM_BLOCKS = 600
 if not os.path.exists('data/images/td/'):
     os.mkdir('data/images/td/')
 data_block_names = ['data/images/td/block' + str(i) + '.pkl' for i in range(NUM_BLOCKS)]
@@ -39,43 +39,52 @@ def saveBlock(data_list, worker_id):
         temp_data.offset_posmap = np.load(temp_data.offset_posmap_path).astype(np.float16)
         temp_data.bbox_info = sio.loadmat(temp_data.bbox_info_path)
         temp_data.attention_mask = np.load(temp_data.attention_mask_path).astype(np.uint8)
+
     print('saving data block', worker_id)
-    ft = open(data_block_names[worker_id], 'wb')
-    pickle.dump(data_list, ft)
-    ft.close()
+    if os.path.exists(data_block_names[worker_id]):
+        print('data path list saved', worker_id)
+        return
+    f = open(data_block_names[worker_id], 'wb')
+    pickle.dump(data_list, f)
+    f.close()
     print('data path list saved', worker_id)
 
 
-def multiSaveBlock():
+def multiSaveBlock(st, ed):
     worker_num = NUM_BLOCKS
 
     total_task = len(all_data)
     import random
+    random.seed(0)
     random.shuffle(all_data)
     jobs = []
     task_per_worker = math.ceil(total_task / worker_num)
     st_idx = [task_per_worker * i for i in range(worker_num)]
     ed_idx = [min(total_task, task_per_worker * (i + 1)) for i in range(worker_num)]
-    for i in range(worker_num):
+    for i in range(st, ed):
         # temp_data_processor = copy.deepcopy(data_processor)
-        p = multiprocessing.Process(target=saveBlock, args=(
+        p = threading.Thread(target=saveBlock, args=(
             all_data[st_idx[i]:ed_idx[i]], i))
         jobs.append(p)
         p.start()
         print('start ', i)
-        if i % 5 == 4:
+        if (i - st) % 4 == 3:
             for p in jobs:
                 p.join()
+        print('batch end')
 
     print('all start')
-    for p in jobs:
-        p.join()
-    print('all end')
+
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='model arguments')
     parser.add_argument('-td', '--trainDataDir', nargs='+', type=str, help='training image directories')
+    parser.add_argument('-s', '--start', default=300, type=int,
+                        help='')
+    parser.add_argument('-e', '--end', default=300, type=int,
+                        help='')
+
     run_args = parser.parse_args()
 
     ft = open('data' + '/' + 'train_data.pkl', 'rb')
@@ -84,4 +93,4 @@ if __name__ == '__main__':
     # for dir_x in run_args.trainDataDir:
     #     addImageData(dir_x)
 
-    multiSaveBlock()
+    multiSaveBlock(run_args.start, run_args.end)
