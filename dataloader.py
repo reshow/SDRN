@@ -135,10 +135,16 @@ class DataGenerator(Dataset):
         if is_pre_read:
             i = 0
             print('preloading')
+            if self.mode == 'posmap':
+                num_max_PR = 80000
+            else:
+                num_max_PR = 40000
             for data in self.all_image_data:
                 data.readFile(mode=self.mode)
                 print(i, end='\r')
                 i += 1
+                if i > num_max_PR:
+                    break
 
     def __getitem__(self, index):
         if self.mode == 'posmap':

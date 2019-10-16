@@ -20,11 +20,41 @@ from data import getColors
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from buildblocks import data_block_names, NUM_BLOCKS
+import threading
 
 now_time = time.localtime()
 save_dir_time = '/' + str(now_time.tm_year) + '-' + str(now_time.tm_mon) + '-' + str(now_time.tm_mday) + '-' \
                 + str(now_time.tm_hour) + '-' + str(now_time.tm_min) + '-' + str(now_time.tm_sec)
 writer = SummaryWriter(log_dir='tmp' + save_dir_time)
+
+
+class MyThread(threading.Thread):
+    def __init__(self, func, args=()):
+        super(MyThread, self).__init__()
+        self.func = func
+        self.args = args
+
+    def run(self):
+        self.result = self.func(*self.args)
+
+    def get_result(self):
+        try:
+            return self.result  # 如果子线程不使用join方法，此处可能会报没有self.result的错误
+        except Exception:
+            print('no result now')
+            return None
+
+
+def loadDataBlock(path_list, worker_id):
+    temp_all_data = []
+    for path in path_list:
+        print('\rloading data path list', worker_id, end='')
+        ft = open(path, 'rb')
+        data_list = pickle.load(ft)
+        ft.close()
+        print('\rdata path list loaded', worker_id, end='')
+        temp_all_data.extend(data_list)
+    return temp_all_data
 
 
 class NetworkManager:
@@ -141,12 +171,24 @@ class NetworkManager:
             sum_metric_loss = np.zeros(num_output)
 
             num_fed_batch = 0
-            for block_id in range(NUM_BLOCKS):
-                print('\rloading data path list', end='')
-                ft = open(data_block_names[block_id], 'rb')
-                self.train_data = pickle.load(ft)
-                ft.close()
-                print('\rdata path list loaded', end='')
+            for block_id in range(NUM_BLOCKS // 60):
+                task_per_worker = 6
+                st_idx = [block_id * 60 + task_per_worker * i for i in range(10)]
+                ed_idx = [min(NUM_BLOCKS, block_id * 60 + task_per_worker * (i + 1)) for i in range(10)]
+                jobs = []
+                self.train_data = []
+                for i in range(10):
+                    idx = np.array(data_block_names[st_idx[i]:ed_idx[i]])
+                    p = MyThread(func=loadDataBlock, args=(idx, i))
+                    jobs.append(p)
+                for p in jobs:
+                    p.start()
+                for p in jobs:
+                    p.join()
+                for p in jobs:
+                    temp_data_list = p.get_result()
+                    self.train_data.extend(temp_data_list)
+
                 train_data_loader = getDataLoader(self.train_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
                                                   is_pre_read=False, num_worker=self.num_worker)
                 total_itr_num = len(train_data_loader.dataset) // train_data_loader.batch_size
@@ -167,7 +209,7 @@ class NetworkManager:
                     optimizer.step()
                     sum_loss += loss.item()
                     print('\r', end='')
-                    print('[epoch:%d, block:%d/%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch + 1, block_id + 1, NUM_BLOCKS, i + 1, total_itr_num,
+                    print('[epoch:%d, block:%d/%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch + 1, block_id, NUM_BLOCKS//60, i, total_itr_num,
                                                                                          int(time.time() - t_start), sum_loss / (num_fed_batch + 1)), end='')
                     for j in range(num_output):
                         sum_metric_loss[j] += metrics_loss[j]
