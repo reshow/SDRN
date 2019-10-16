@@ -50,6 +50,8 @@ def multiSaveBlock():
     worker_num = NUM_BLOCKS
 
     total_task = len(all_data)
+    import random
+    random.shuffle(all_data)
     jobs = []
     task_per_worker = math.ceil(total_task / worker_num)
     st_idx = [task_per_worker * i for i in range(worker_num)]
@@ -76,7 +78,10 @@ if __name__ == '__main__':
     parser.add_argument('-td', '--trainDataDir', nargs='+', type=str, help='training image directories')
     run_args = parser.parse_args()
 
-    for dir_x in run_args.trainDataDir:
-        addImageData(dir_x)
+    ft = open('data' + '/' + 'train_data.pkl', 'rb')
+    data1 = pickle.load(ft)
+    all_data.extend(data1)
+    # for dir_x in run_args.trainDataDir:
+    #     addImageData(dir_x)
 
     multiSaveBlock()
