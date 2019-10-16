@@ -15,6 +15,7 @@ from dataloader import ImageData
 from torchmodel import TorchNet
 from dataloader import getDataLoader, DataGenerator
 from loss import getErrorFunction, getLossFunction
+import masks
 from data import getColors
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -190,7 +191,7 @@ class NetworkManager:
                 model.eval()
                 val_i = 0
                 print("\nWaiting Test!", val_i, end='\r')
-                for data in val_data_loader:
+                for i, data in enumerate(val_data_loader):
                     val_i += 1
                     print("Waiting Test!", val_i, end='\r')
                     x = data[0]
@@ -289,6 +290,23 @@ class NetworkManager:
                 total_error_list.append(temp_errors)
                 print(self.test_data[i].init_image_path, temp_errors)
                 if is_visualize:
+                    init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                    showImage(init_image)
+                    diff = np.square(gt_y - p) * masks.face_mask_np3d
+                    dist2d = np.sqrt(np.sum(diff[:, 0:2], axis=-1))
+                    dist3d = np.sqrt(np.sum(diff[:, 0:3], axis=-1))
+                    visibility = np.load(self.test_data[i].attention_mask_path.replace('attention', 'visibility')).astype(np.float32)
+
+                    plt.subplot(2, 2, 1)
+                    plt.imshow(init_image)
+                    plt.subplot(2, 2, 2)
+                    plt.imshow(dist2d)
+                    plt.subplot(2, 2, 3)
+                    plt.imshow(dist3d)
+                    plt.subplot(2, 2, 4)
+                    plt.imshow(visibility)
+                    plt.show()
+
                     if temp_errors[0] > 0.06:
                         tex = np.load(self.test_data[i].texture_path).astype(np.float32)
                         init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0

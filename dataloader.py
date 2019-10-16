@@ -44,7 +44,6 @@ class ImageData:
         self.offset_posmap_path = image_dir + '/' + image_name + '_offset_posmap.npy'
 
         self.attention_mask_path = image_dir + '/' + image_name + '_attention_mask.npy'
-        # TODO:read bbox and tform
 
     def readFile(self, mode='posmap'):
         if mode == 'posmap':

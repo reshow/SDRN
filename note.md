@@ -30,14 +30,15 @@
                  
         momentum0.5 MCG03 train  2019-10-11-8:00  normalized  tanh (主要针对负的posmap的问题)  [get:3.72]
         
-         momentum0.5 MCG03 train  2019-10-11-8:00  normalized  tanh (主要针对负的posmap的问题)
+                    MCG03  10-15-20:34  train    zeroz
         
      (qua)
         m0.5  MCG03 qua quaternion  lossrate 0 :1 :255:500 2019-10-13-15:00
             momentum0.5 [MG03 qua] 10-12-17:30 quaternion loss 0:1:500:500
          
     (Attention)    
-        momentum0.5 [attention] 2019-10-13-03:00  normalized tanh attention 修改了erase方式  attention的训练添加了crop  attentionlossrante=0.03  单卡
+        修改了erase方式  tanh 
+        momentum0.5 [attention] 2019-10-13-03:00  normalized tanh attention   attention的训练  no clip  attentionlossrante=0.03  单卡 [get3.72  epoch32]
         
         momentum0.5 [train] 2019-10-13-15:30   normalized tanh attention  lossrate=1  [get3.75]
         
