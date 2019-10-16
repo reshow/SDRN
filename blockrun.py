@@ -19,6 +19,7 @@ import masks
 from data import getColors
 import torch
 from torch.utils.tensorboard import SummaryWriter
+from buildblocks import data_block_names, NUM_BLOCKS
 
 now_time = time.localtime()
 save_dir_time = '/' + str(now_time.tm_year) + '-' + str(now_time.tm_mon) + '-' + str(now_time.tm_mday) + '-' \
@@ -125,18 +126,6 @@ class NetworkManager:
         optimizer = self.net.optimizer
         scheduler = self.net.scheduler
 
-        # from thop import profile
-        # sample_input = torch.randn((1, 3, 256, 256)).to(self.net.device)
-        # sample_output = torch.randn((1, 3, 256, 256)).to(self.net.device)
-        # flops, params = profile(model, inputs=(sample_input, sample_output))
-        # print('params:%d  flops:%d' % (params, flops))
-
-        # l2_weight_loss = torch.tensor(0).to(self.net.device).float()
-        # for name, param in model.named_parameters():
-        #     if 'weight' in name:
-        #         l2_weight_loss += torch.norm(param, 2)
-        train_data_loader = getDataLoader(self.train_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
-                                          is_pre_read=self.is_pre_read, num_worker=self.num_worker)
         val_data_loader = getDataLoader(self.val_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
                                         is_pre_read=True, num_worker=0)
 
@@ -144,7 +133,6 @@ class NetworkManager:
             print('Epoch: %d' % epoch)
             scheduler.step()
             model.train()
-            total_itr_num = len(train_data_loader.dataset) // train_data_loader.batch_size
 
             sum_loss = 0.0
             t_start = time.time()
@@ -152,37 +140,38 @@ class NetworkManager:
             num_input = self.mode[4]
             sum_metric_loss = np.zeros(num_output)
 
-            for i, data in enumerate(train_data_loader):
-                # 准备数据
-                x = data[0]
-                x = x.to(self.net.device).float()
-                y = [data[j] for j in range(1, 1 + num_input)]
-                for j in range(num_input):
-                    y[j] = y[j].to(x.device).float()
-                optimizer.zero_grad()
-                # if self.mode[0] == 1:
-                #     outputs = model(x, y[0], y[1], y[2], y[3], y[4])
-                # elif self.mode[0] == 2:
-                #     outputs = model(x, y[0], y[1])
-                # elif self.mode[0] == 3:
-                #     outputs = model(x, y[0], y[1], y[2], y[3])
-                # elif self.mode[0] == 4:
-                #     outputs = model(x, y[0], y[1])
-                # else:
-                #     outputs = model(x, y[0])
-                outputs = model(x, *y)
+            num_fed_batch = 0
+            for block_id in range(NUM_BLOCKS):
+                print('\rloading data path list', end='')
+                ft = open(data_block_names[block_id], 'rb')
+                self.train_data = pickle.load(ft)
+                ft.close()
+                print('\rdata path list loaded', end='')
+                train_data_loader = getDataLoader(self.train_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
+                                                  is_pre_read=False, num_worker=self.num_worker)
+                total_itr_num = len(train_data_loader.dataset) // train_data_loader.batch_size
+                for i, data in enumerate(train_data_loader):
+                    num_fed_batch += 1
+                    # 准备数据
+                    x = data[0]
+                    x = x.to(self.net.device).float()
+                    y = [data[j] for j in range(1, 1 + num_input)]
+                    for j in range(num_input):
+                        y[j] = y[j].to(x.device).float()
+                    optimizer.zero_grad()
+                    outputs = model(x, *y)
 
-                loss = torch.mean(outputs[0])
-                metrics_loss = [torch.mean(outputs[j]) for j in range(1, 1 + num_output)]
-                loss.backward()
-                optimizer.step()
-                sum_loss += loss.item()
-                print('\r', end='')
-                print('[epoch:%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch, i + 1, total_itr_num, int(time.time() - t_start), sum_loss / (i + 1)),
-                      end='')
-                for j in range(num_output):
-                    sum_metric_loss[j] += metrics_loss[j]
-                    print(' Metrics%d: %.04f ' % (j, sum_metric_loss[j] / (i + 1)), end='')
+                    loss = torch.mean(outputs[0])
+                    metrics_loss = [torch.mean(outputs[j]) for j in range(1, 1 + num_output)]
+                    loss.backward()
+                    optimizer.step()
+                    sum_loss += loss.item()
+                    print('\r', end='')
+                    print('[epoch:%d, block:%d/%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch + 1, block_id + 1, NUM_BLOCKS, i + 1, total_itr_num,
+                                                                                         int(time.time() - t_start), sum_loss / (num_fed_batch + 1)), end='')
+                    for j in range(num_output):
+                        sum_metric_loss[j] += metrics_loss[j]
+                        print(' Metrics%d: %.04f ' % (j, sum_metric_loss[j] / (num_fed_batch + 1)), end='')
 
             # validation
 
@@ -199,16 +188,6 @@ class NetworkManager:
                     y = [data[j] for j in range(1, 1 + num_input)]
                     for j in range(num_input):
                         y[j] = y[j].to(x.device).float()
-                    # if self.mode[0] == 1:
-                    #     outputs = model(x, y[0], y[1], y[2], y[3], y[4])
-                    # elif self.mode[0] == 2:
-                    #     outputs = model(x, y[0], y[1])
-                    # elif self.mode[0] == 3:
-                    #     outputs = model(x, y[0], y[1], y[2], y[3])
-                    # elif self.mode[0] == 4:
-                    #     outputs = model(x, y[0], y[1])
-                    # else:
-                    #     outputs = model(x, y[0])
                     outputs = model(x, *y)
                     metrics_loss = [torch.mean(outputs[j]) for j in range(1, 1 + num_output)]
                     for j in range(num_output):
@@ -347,7 +326,7 @@ if __name__ == '__main__':
     parser.add_argument('-struct', '--netStructure', default='InitPRNet', type=str, help='')
     parser.add_argument('-lr', '--learningRate', default=1e-4, type=float)
     parser.add_argument('--startEpoch', default=0, type=int)
-    parser.add_argument('--isPreRead', default=True, type=ast.literal_eval)
+    parser.add_argument('--isPreRead', default=False, type=ast.literal_eval)
     parser.add_argument('--numWorker', default=4, type=int, help='loader worker number')
 
     run_args = parser.parse_args()
@@ -360,19 +339,8 @@ if __name__ == '__main__':
     net_manager = NetworkManager(run_args)
     net_manager.buildModel(run_args)
     if run_args.isTrain:
-        if run_args.trainDataDir is not None:
-            if run_args.valDataDir is not None:
-                for dir in run_args.trainDataDir:
-                    net_manager.addImageData(dir, 'train')
-                for dir in run_args.valDataDir:
-                    net_manager.addImageData(dir, 'val')
-            else:
-                for dir in run_args.trainDataDir:
-                    net_manager.addImageData(dir, 'both')
-            net_manager.saveImageDataPaths()
-        else:
-            net_manager.loadImageDataPaths()
-
+        for dir in run_args.valDataDir:
+            net_manager.addImageData(dir, 'val')
         if run_args.loadModelPath is not None:
             net_manager.net.loadWeights(run_args.loadModelPath)
         net_manager.train()
