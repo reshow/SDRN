@@ -414,7 +414,7 @@ def getWeightedKpt(pos):
     for i in range(len(fl)):
         p = np.zeros(3)
         for j in range(len(fl[i])):
-            p += pos[fl[i][j][0], fl[i][j][1]] * fl[i][j][2]
+            p += pos[int(fl[i][j][0]), int(fl[i][j][1])] * fl[i][j][2]
         kpt.append(p)
     kpt=np.asarray(kpt)
     return kpt

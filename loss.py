@@ -1,7 +1,7 @@
 import numpy as np
 from skimage import io, transform
 from data import uv_kpt
-from data import face_mask_np, face_mask_mean_fix_rate
+from data import face_mask_np, face_mask_mean_fix_rate, getWeightedKpt
 from dataloader import toTensor
 import torch
 import torch.nn.functional as F
@@ -70,7 +70,7 @@ def MaskLoss():
             self.rate = rate
 
         def forward(self, y_true, y_pred):
-            return F.binary_cross_entropy(y_pred, y_true)*self.rate
+            return F.binary_cross_entropy(y_pred, y_true) * self.rate
 
     return TemplateLoss
 
@@ -96,19 +96,28 @@ def getLossFunction(loss_func_name='SquareError'):
         print('unknown loss:', loss_func_name)
 
 
-def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=False, is_gt_landmark=False, rate=1.0):
+def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=False, is_gt_landmark=False, is_weighted_landmark=False):
     def templateError(y_true, y_pred, bbox=None, landmarks=None):
         assert (not (is_foreface and is_landmark))
+        y_true = y_true.copy()
+        y_pred = y_pred.copy()
         y_true[:, :, 2] = y_true[:, :, 2] * face_mask_np
         y_pred[:, :, 2] = y_pred[:, :, 2] * face_mask_np
-        y_true[:, :, 2] = y_true[:, :, 2] - np.mean(y_true[:, :, 2])
-        y_pred[:, :, 2] = y_pred[:, :, 2] - np.mean(y_pred[:, :, 2])
+        y_true_mean = np.mean(y_true[:, :, 2]) * face_mask_mean_fix_rate
+        y_pred_mean = np.mean(y_pred[:, :, 2]) * face_mask_mean_fix_rate
+        y_true[:, :, 2] = y_true[:, :, 2] - y_true_mean
+        y_pred[:, :, 2] = y_pred[:, :, 2] - y_pred_mean
 
         if is_landmark:
             # the gt landmark is not the same as the landmarks get from mesh using index
             if is_gt_landmark:
-                gt = landmarks
-                pred = y_pred[uv_kpt[:, 0], uv_kpt[:, 1]]
+                gt = landmarks.copy()
+                gt[:, 2] = gt[:, 2] - y_true_mean
+
+                if is_weighted_landmark:
+                    pred = getWeightedKpt(y_pred)
+                else:
+                    pred = y_pred[uv_kpt[:, 0], uv_kpt[:, 1]]
                 diff = np.square(gt - pred)
                 if is_2d:
                     dist = np.sqrt(np.sum(diff[:, 0:2], axis=-1))
@@ -138,25 +147,31 @@ def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=Fals
         else:
             bbox_size = 1.
         loss = np.mean(dist / bbox_size)
-        return loss * rate
+        return loss
 
     return templateError
 
 
 def getErrorFunction(error_func_name='NME', rate=1.0):
     if error_func_name == 'nme2d' or error_func_name == 'normalized mean error2d':
-        return PRNError(is_2d=True, is_normalized=True, is_foreface=True, rate=rate)
+        return PRNError(is_2d=True, is_normalized=True, is_foreface=True)
     elif error_func_name == 'nme3d' or error_func_name == 'normalized mean error3d':
-        return PRNError(is_2d=False, is_normalized=True, is_foreface=True, rate=rate)
+        return PRNError(is_2d=False, is_normalized=True, is_foreface=True)
     elif error_func_name == 'landmark2d' or error_func_name == 'normalized mean error3d':
-        return PRNError(is_2d=True, is_normalized=True, is_foreface=False, is_landmark=True, rate=rate)
+        return PRNError(is_2d=True, is_normalized=True, is_foreface=False, is_landmark=True)
     elif error_func_name == 'landmark3d' or error_func_name == 'normalized mean error3d':
-        return PRNError(is_2d=False, is_normalized=True, is_foreface=False, is_landmark=True, rate=rate)
+        return PRNError(is_2d=False, is_normalized=True, is_foreface=False, is_landmark=True)
     elif error_func_name == 'gtlandmark2d' or error_func_name == 'normalized mean error3d':
         return PRNError(is_2d=True, is_normalized=True, is_foreface=False, is_landmark=True,
-                        is_gt_landmark=True, rate=rate)
+                        is_gt_landmark=True)
     elif error_func_name == 'gtlandmark3d' or error_func_name == 'normalized mean error3d':
         return PRNError(is_2d=False, is_normalized=True, is_foreface=False, is_landmark=True,
-                        is_gt_landmark=True, rate=rate)
+                        is_gt_landmark=True)
+    elif error_func_name == 'weightlandmark2d':
+        return PRNError(is_2d=True, is_normalized=True, is_foreface=False, is_landmark=True,
+                        is_gt_landmark=True, is_weighted_landmark=True)
+    elif error_func_name == 'weightlandmark3d':
+        return PRNError(is_2d=False, is_normalized=True, is_foreface=False, is_landmark=True,
+                        is_gt_landmark=True, is_weighted_landmark=True)
     else:
         print('unknown error:', error_func_name)
