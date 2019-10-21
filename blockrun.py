@@ -44,15 +44,20 @@ class MyThread(threading.Thread):
             print('no result now')
             return None
 
+    def clear(self):
+        self.result = None
+
 
 def loadDataBlock(path_list, worker_id):
     temp_all_data = []
+    i = 0
     for path in path_list:
-        print('\rloading data path list', worker_id, end='')
+        i += 1
+        print('\rloading', worker_id, i, end='   ')
         ft = open(path, 'rb')
         data_list = pickle.load(ft)
         ft.close()
-        print('\rdata path list loaded', worker_id, end='')
+        print('\rloaded ', worker_id, i, end='   ')
         temp_all_data.extend(data_list)
     return temp_all_data
 
@@ -97,6 +102,9 @@ class NetworkManager:
                           'SiamPRN': [4, self.net.buildSiamPRN, 'siam', 3, 2],
                           'MeanOffsetPRN': [3, self.net.buildMeanOffsetPRN, 'meanoffset', 4, 4]}
         self.mode = self.mode_dict['InitPRN']
+
+        self.num_thread = args.numReadingThread
+        self.num_block_per_part = args.numBlockPerPart
 
     def buildModel(self, args):
         print('building', args.netStructure)
@@ -171,13 +179,13 @@ class NetworkManager:
             sum_metric_loss = np.zeros(num_output)
 
             num_fed_batch = 0
-            for block_id in range(NUM_BLOCKS // 60):
-                task_per_worker = 6
-                st_idx = [block_id * 60 + task_per_worker * i for i in range(10)]
-                ed_idx = [min(NUM_BLOCKS, block_id * 60 + task_per_worker * (i + 1)) for i in range(10)]
+            for block_id in range(NUM_BLOCKS // self.num_block_per_part):
+                task_per_worker = self.num_block_per_part // self.num_thread
+                st_idx = [block_id * self.num_block_per_part + task_per_worker * i for i in range(self.num_thread)]
+                ed_idx = [min(NUM_BLOCKS, block_id * self.num_block_per_part + task_per_worker * (i + 1)) for i in range(self.num_thread)]
                 jobs = []
                 self.train_data = []
-                for i in range(10):
+                for i in range(self.num_thread):
                     idx = np.array(data_block_names[st_idx[i]:ed_idx[i]])
                     p = MyThread(func=loadDataBlock, args=(idx, i))
                     jobs.append(p)
@@ -188,6 +196,7 @@ class NetworkManager:
                 for p in jobs:
                     temp_data_list = p.get_result()
                     self.train_data.extend(temp_data_list)
+                    p.clear()
 
                 train_data_loader = getDataLoader(self.train_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
                                                   is_pre_read=False, num_worker=self.num_worker)
@@ -209,7 +218,7 @@ class NetworkManager:
                     optimizer.step()
                     sum_loss += loss.item()
                     print('\r', end='')
-                    print('[epoch:%d, block:%d/%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch + 1, block_id, NUM_BLOCKS//60, i, total_itr_num,
+                    print('[epoch:%d, block:%d/%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch, block_id, NUM_BLOCKS // self.num_block_per_part, i, total_itr_num,
                                                                                          int(time.time() - t_start), sum_loss / (num_fed_batch + 1)), end='')
                     for j in range(num_output):
                         sum_metric_loss[j] += metrics_loss[j]
@@ -370,6 +379,8 @@ if __name__ == '__main__':
     parser.add_argument('--startEpoch', default=0, type=int)
     parser.add_argument('--isPreRead', default=False, type=ast.literal_eval)
     parser.add_argument('--numWorker', default=4, type=int, help='loader worker number')
+    parser.add_argument('--numReadingThread', default=10, type=int)
+    parser.add_argument('--numBlockPerPart', default=60, type=int)
 
     run_args = parser.parse_args()
 

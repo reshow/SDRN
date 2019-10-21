@@ -280,12 +280,15 @@ class NetworkManager:
                 print(self.test_data[i].init_image_path, temp_errors)
                 if is_visualize:
 
-                    if temp_errors[0] > 0.06:
+                    if temp_errors[0] >0.1:
                         init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
                         diff = np.square(gt_y - p) * masks.face_mask_np3d
                         dist2d = np.sqrt(np.sum(diff[:, :, 0:2], axis=-1))
+                        dist2d[0,0]=30.0
                         dist3d = np.sqrt(np.sum(diff[:, :, 0:3], axis=-1))
+                        dist3d[0,0]=30.0
                         dist3 = np.sqrt(diff[:, :, 2])
+                        dist3[0,0]=30.0
                         visibility = np.load(self.test_data[i].attention_mask_path.replace('attention', 'visibility')).astype(np.float32)
 
                         plt.subplot(2, 3, 1)
@@ -300,9 +303,10 @@ class NetworkManager:
                         plt.imshow(visibility)
                         plt.show()
 
-                        tex = np.load(self.test_data[i].texture_path).astype(np.float32)
+                        tex = np.load(self.test_data[i].texture_path.replace('zeroz2','full')).astype(np.float32)
                         init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
                         show([p, tex, init_image], mode='uvmap')
+                        init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
                         show([gt_y, tex, init_image], mode='uvmap')
                 mean_errors = np.mean(total_error_list, axis=0)
             for i in range(len(error_func_list)):

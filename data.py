@@ -392,8 +392,8 @@ def getNewKptMap():
             for y in range(256):
                 if uv_texture_map[x, y] > 0:
                     temp_weight_factor.append([x, y, uv_texture_map[x, y]])
-        if len(temp_weight_factor) ==0:
-            temp_weight_factor.append([uv_kpt[i,1],uv_kpt[i,0],1])
+        if len(temp_weight_factor) == 0:
+            temp_weight_factor.append([uv_kpt[i, 0], uv_kpt[i, 1], 1])
         temp_weight_factor = np.array(temp_weight_factor)
         total_weight = np.sum(temp_weight_factor[:, 2])
         temp_weight_factor[:, 2] = temp_weight_factor[:, 2] / total_weight
@@ -403,5 +403,18 @@ def getNewKptMap():
     for temp_weight_factor in weight_factor_list:
         for factor in temp_weight_factor:
             kpt_mask[int(factor[0]), int(factor[1])] = factor[2]
-    return weight_factor_list,kpt_mask
-fl,fm=getNewKptMap()
+    return weight_factor_list, kpt_mask
+
+
+fl, fm = getNewKptMap()
+
+
+def getWeightedKpt(pos):
+    kpt = []
+    for i in range(len(fl)):
+        p = np.zeros(3)
+        for j in range(len(fl[i])):
+            p += pos[fl[i][j][0], fl[i][j][1]] * fl[i][j][2]
+        kpt.append(p)
+    kpt=np.asarray(kpt)
+    return kpt

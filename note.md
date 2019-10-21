@@ -32,6 +32,8 @@
         
                     MCG03  10-15-20:34  train    zeroz
         
+                    [gpu07 train]2019-10-16-9-8-46+2019-10-17-10-19-52  initprn2 尝试复现结果 [get3.72]
+        
      (qua)
         m0.5  MCG03 qua quaternion  lossrate 0 :1 :255:500 2019-10-13-15:00
             momentum0.5 [MG03 qua] 10-12-17:30 quaternion loss 0:1:500:500
@@ -44,5 +46,5 @@
         
         momentum0.5 [attention3] 2019-10-13-15:49 lossrate1 no clip   [get bad]
 
-        m0.5 [attention2]  10-15-13:28  lossrate0.1  noclip  
+        m0.5 [attention2]  10-15-13:28+2019-10-17-10-29-16  lossrate0.1  noclip  l2rate=0.0001 [get3.68]
         

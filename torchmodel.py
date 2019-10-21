@@ -223,7 +223,7 @@ class AttentionLoss(nn.Module):
         super(AttentionLoss, self).__init__()
         self.criterion0 = getLossFunction('fwrse')()
         self.metrics0 = getLossFunction('frse')()
-        self.criterion1 = getLossFunction('bce')(0.03)
+        self.criterion1 = getLossFunction('bce')(0.1)
         self.metrics1 = getLossFunction('mae')()
 
     def forward(self, posmap, mask, gt_posmap, gt_mask):
@@ -654,7 +654,7 @@ class TorchNet:
         self.model.to(self.device)
         # model.cuda()
 
-        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0001)
+        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.5)
 
     def buildQuaternionOffsetPRN(self):
@@ -678,7 +678,7 @@ class TorchNet:
         self.model.to(self.device)
         # model.cuda()
 
-        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0001)
+        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.5)
 
     def buildMeanOffsetPRN(self):
@@ -698,6 +698,6 @@ class TorchNet:
             # map_location = lambda storage, loc: storage
             self.model.module.load_state_dict(torch.load(model_path))  # , map_location=map_location))
         else:
-            # self.model.load_state_dict(torch.load(model_path,map_location='cuda:0'))
-            self.model.load_state_dict(torch.load(model_path))
+            self.model.load_state_dict(torch.load(model_path,map_location='cuda:0'))
+            # self.model.load_state_dict(torch.load(model_path))
         self.model.to(self.device)

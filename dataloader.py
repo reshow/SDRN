@@ -299,7 +299,7 @@ class DataGenerator(Dataset):
             offset = self.all_image_data[index].getOffsetPosmap().astype(np.float32)
 
             if self.is_aug:
-                if np.random.rand() > 0.75:
+                if np.random.rand() > 0.5:
                     rot_angle = np.random.randint(-90, 90)
                     rot_angle = rot_angle / 180. * np.pi
                     image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
@@ -312,6 +312,8 @@ class DataGenerator(Dataset):
 
             pos = pos / 280.
             offset = offset / 4.
+            if abs(offset).max() > 1:
+                print('\n too large offset', abs(offset).max())
             pos = self.toTensor(pos)
             offset = self.toTensor(offset)
 

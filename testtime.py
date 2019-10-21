@@ -190,8 +190,8 @@ def changeImageType(data_dir):
                 # if posmap.min() < 0 or posmap.max()>256.:
                 #     j+=1
                 #     print(posmap.min(),posmap.max(),j)
-                # mask = getImageAttentionMask(image, posmap)
-                # np.save(root + '/' + str(file_name).replace('_cropped', '_attention_mask.npy'), mask)
+                mask = getImageAttentionMask(image, posmap)
+                np.save(root + '/' + str(file_name).replace('_cropped', '_attention_mask.npy'), mask)
 
                 visibility_mask = getVisibilityMask(posmap, image.shape)
                 np.save(root + '/' + str(file_name).replace('_cropped', '_visibility_mask.npy'), visibility_mask.astype(np.uint8))
@@ -208,7 +208,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='data preprocess arguments')
 
-    parser.add_argument('-i', '--inputDir', default='data/images/AFLW2000-full', type=str,
+    parser.add_argument('-i', '--inputDir', default='data/images/AFLW2000-zeroz2', type=str,
                         help='path to the input directory, where input images are stored.')
     conf = parser.parse_args()
     changeImageType(conf.inputDir)
