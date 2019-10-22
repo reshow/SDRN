@@ -311,7 +311,7 @@ class DataGenerator(Dataset):
                 image = self.toTensor(image)
 
             pos = pos / 280.
-            offset = offset / 4.
+            offset = offset / 6.
             if abs(offset).max() > 1:
                 print('\n too large offset', abs(offset).max())
             pos = self.toTensor(pos)

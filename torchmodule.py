@@ -253,7 +253,7 @@ class EstimateRebuildModule(nn.Module):
         self.mean_posmap_tensor.requires_grad = False
 
         self.S_scale = 1e4
-        self.offset_scale = 4
+        self.offset_scale = 6
         revert_opetator = np.array([[1., -1., 1.], [1., -1., 1.], [1., -1., 1.]]).astype(np.float32)
         self.revert_operator = nn.Parameter(torch.from_numpy(revert_opetator))
         self.revert_operator.requires_grad = False
