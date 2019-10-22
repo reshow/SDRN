@@ -6,6 +6,7 @@ from dataloader import toTensor
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
+from icp import icp
 
 weight_mask_np = io.imread('uv-data/uv_weight_mask.png').astype(float)
 weight_mask_np[weight_mask_np == 255] = 256
@@ -152,6 +153,51 @@ def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=Fals
     return templateError
 
 
+def ICPError(is_2d=False, is_normalized=True, is_foreface=True):
+    def templateError(y_true, y_pred, bbox=None, landmarks=None):
+        y_true = y_true.copy()
+        y_pred = y_pred.copy()
+
+        y_true_vertices = []
+        y_pred_vertices = []
+
+        for i in range(256):
+            for j in range(256):
+                if face_mask_np[i, j] > 0:
+                    y_true_vertices.append(y_true[i, j])
+                    y_pred_vertices.append(y_pred[i, j])
+        y_pred_vertices = np.array(y_pred_vertices)
+        y_true_vertices = np.array(y_true_vertices)
+        Tform, mean_dist, break_itr = icp(y_pred_vertices, y_true_vertices, max_iterations=30)
+
+        # R = Tform[0:3, 0:3]
+        # T = Tform[0:3, 3]
+        #
+        # y_pred = y_pred.dot(R.T)
+        # y_pred = y_pred + T
+        #
+        # diff = np.square(y_true - y_pred)
+        # if is_2d:
+        #     dist = np.sqrt(np.sum(diff[:, :, 0:2], axis=-1))
+        # else:
+        #     # 3d
+        #     dist = np.sqrt(np.sum(diff, axis=-1))
+        # if is_foreface:
+        #     dist = dist * face_mask_np * face_mask_mean_fix_rate
+
+        if is_normalized:
+            # bbox_size = np.sqrt(np.sum(np.square(bbox[0, :] - bbox[1, :])))
+            # bbox_size = np.sqrt((bbox[0, 0] - bbox[1, 0]) * (bbox[0, 1] - bbox[1, 1]))
+            outer_interocular_dist = y_true[uv_kpt[36, 0], uv_kpt[36, 1]] - y_true[uv_kpt[45, 0], uv_kpt[45, 1]]
+            bbox_size = np.sqrt(outer_interocular_dist[0:2].dot(outer_interocular_dist[0:2]))
+        else:
+            bbox_size = 1.
+        loss = np.mean(mean_dist / bbox_size)
+        return loss
+
+    return templateError
+
+
 def getErrorFunction(error_func_name='NME', rate=1.0):
     if error_func_name == 'nme2d' or error_func_name == 'normalized mean error2d':
         return PRNError(is_2d=True, is_normalized=True, is_foreface=True)
@@ -173,5 +219,8 @@ def getErrorFunction(error_func_name='NME', rate=1.0):
     elif error_func_name == 'weightlandmark3d':
         return PRNError(is_2d=False, is_normalized=True, is_foreface=False, is_landmark=True,
                         is_gt_landmark=True, is_weighted_landmark=True)
+    elif error_func_name == 'icp':
+        return ICPError(is_normalized=True)
+
     else:
         print('unknown error:', error_func_name)
