@@ -17,6 +17,20 @@ from augmentation import getRotateMatrix, getRotateMatrix3D
 from numpy.linalg import inv
 from masks import getImageAttentionMask, getVisibilityMask
 
+
+def createImageData(image_name, root):
+    write_dir = root + '/' + image_name
+    if not os.path.exists(write_dir):
+        os.mkdir(write_dir)
+
+    init_image = np.zeros((450, 450, 3))
+    [height,_,_]=init_image.shape
+    shape_para = np.random.randn(199)
+    exp_para = np.random.randn(29)
+    vertices = bfm.generate_vertices(shape_para, exp_para)
+    offset_vertices = bfm.generate_offset(shape_para, exp_para)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='data preprocess arguments')
