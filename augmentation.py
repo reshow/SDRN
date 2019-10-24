@@ -101,10 +101,10 @@ def gaussNoise(x, mean=0, var=0.001):
 
 @numba.jit()
 def distortion(x):
-    marginx1 = np.random.rand() * 0.1
-    marginy1 = np.random.rand() * 0.1
-    marginx2 = np.random.rand() * 0.1
-    marginy2 = np.random.rand() * 0.1
+    marginx1 = np.random.rand() * 0.16-0.08
+    marginy1 = np.random.rand() * 0.16-0.08
+    marginx2 = np.random.rand() * 0.16-0.08
+    marginy2 = np.random.rand() * 0.16-0.08
     height = len(x)
     width = len(x[0])
     out = np.zeros((height, width))
