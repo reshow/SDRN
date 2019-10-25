@@ -279,6 +279,60 @@ class EstimateRebuildModule(nn.Module):
         return outpos
 
 
+# numpy version
+def vector2Rotation(src, dst):
+    a2 = src / np.sqrt(src.dot(src))
+    b2 = dst / np.sqrt(dst.dot(dst))
+    u = np.cross(a2, b2)
+    u = u / np.sqrt(u.dot(u))
+    theta = np.arccos(np.sum(a2 * b2)) / 2
+    q1 = np.cos(theta)
+    q234 = np.sin(theta) * u
+    q2 = q234[0]
+    q3 = q234[1]
+    q4 = q234[2]
+    R = [[2 * q1 ** 2 - 1 + 2 * q2 ** 2, 2 * (q2 * q3 + q1 * q4), 2 * (q2 * q4 - q1 * q3)],
+         [2 * (q2 * q3 - q1 * q4), 2 * q1 ** 2 - 1 + 2 * q3 ** 2, 2 * (q3 * q4 + q1 * q2)],
+         [2 * (q2 * q4 + q1 * q3), 2 * (q3 * q4 - q1 * q2), 2 * q1 ** 2 - 1 + 2 * q4 ** 2]]
+    s1 = np.sqrt(dst.dot(dst))
+    s2 = np.sqrt(src.dot(src))
+    R = np.array(R) * s1 / s2
+    return R
+
+
+class VisibleRebuildModule(nn.Module):
+    def __init__(self):
+        super(VisibleRebuildModule, self).__init__()
+        self.mean_posmap_tensor = nn.Parameter(torch.from_numpy(mean_posmap.transpose((2, 0, 1))))
+        self.mean_posmap_tensor.requires_grad = False
+
+        self.S_scale = 1e4
+        self.offset_scale = 6
+        revert_opetator = np.array([[1., -1., 1.], [1., -1., 1.], [1., -1., 1.]]).astype(np.float32)
+        self.revert_operator = nn.Parameter(torch.from_numpy(revert_opetator))
+        self.revert_operator.requires_grad = False
+
+    def forward(self, Offset, Posmap_kpt):
+        offsetmap = Offset * self.offset_scale + self.mean_posmap_tensor
+        offsetmap = offsetmap.permute(0, 2, 3, 1)
+        kptmap = Posmap_kpt.permute(0, 2, 3, 1)
+        outpos = torch.zeros((Offset.shape[0], 256, 256, 3), device=Offset.shape)
+
+        visibility = torch.ones((Offset.shape[0], 68), device=Offset.shape)
+        kpt_dst = kptmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
+        kpt_src = offsetmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
+        for i in range(Offset.shape[0]):
+            for x in range(68):
+                for y in range(68):
+                    if x == y:
+                        continue
+                    dst = kpt_dst[x] - kpt_dst[y]
+                    src = kpt_src[x] - kpt_src[y]
+
+        outpos = outpos.permute(0, 3, 1, 2)
+        return outpos
+
+
 class Flatten(nn.Module):
     def __init__(self):
         super(Flatten, self).__init__()
