@@ -299,11 +299,12 @@ class DataGenerator(Dataset):
             offset = self.all_image_data[index].getOffsetPosmap().astype(np.float32)
 
             if self.is_aug:
-                if np.random.rand() > 0.5:
-                    rot_angle = np.random.randint(-90, 90)
-                    rot_angle = rot_angle / 180. * np.pi
-                    image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
-                image, pos = augmentation.prnAugment_torch(image, pos, is_rotate=False)
+                # if np.random.rand() > 0.5:
+                #     rot_angle = np.random.randint(-90, 90)
+                #     rot_angle = rot_angle / 180. * np.pi
+                #     image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
+                # image, pos = augmentation.prnAugment_torch(image, pos, is_rotate=False)
+                image, pos = augmentation.prnAugment_torch(image, pos)
                 image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
                 image = self.toTensor(image)
             else:

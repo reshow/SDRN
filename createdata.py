@@ -12,6 +12,7 @@ from numpy.linalg import inv
 from masks import getImageAttentionMask, getVisibilityMask
 from processor import DataProcessor
 from augmentation import randomErase
+import numba
 
 data_processor = DataProcessor()
 
@@ -52,18 +53,33 @@ def avoidOutOfImage(pose_para, shape_para, exp_para, height=450):
     return pose_para
 
 
-def renderTriangleFix(mesh_info):
-    new_triangles = []
-    vertices = mesh_info['vertices']
-    triangles = mesh_info['triangles']
+@numba.njit
+def numbaCross3D(a, b):
+    # c = np.zeros(3)
+    # c[0] = a[1] * b[2] - b[1] * a[2]
+    # c[1] = a[2] * b[0] - b[2] * a[0]
+    # c[2] = a[0] * b[1] - b[0] * a[1]
+    return a[0] * b[1] - b[0] * a[1]
+
+
+@numba.jit
+def filterTriangles(new_triangles, vertices, triangles):
     for i in range(len(triangles)):
         t = triangles[i]
         a = vertices[int(t[0])]
         b = vertices[int(t[1])]
         c = vertices[int(t[2])]
-        direct = np.cross(b - a, c - b)
-        if direct[2] >= 0:
-            new_triangles.append(t)
+        direct = numbaCross3D(b - a, c - b)
+        if direct >= 0:
+            new_triangles[i] = t
+    return new_triangles
+
+
+def renderTriangleFix(mesh_info):
+    vertices = mesh_info['vertices']
+    triangles = mesh_info['triangles']
+    new_triangles = np.zeros((len(triangles), 3))
+    new_triangles = filterTriangles(new_triangles, vertices, triangles)
     return np.array(new_triangles)
 
 
@@ -121,6 +137,7 @@ def createImageData(image_name, root, tex_modules, pos_modules):
                 'Exp_Para': exp_para}
     mesh_info = bfm2Mesh(bfm_info)
     new_triangles = renderTriangleFix(mesh_info)
+    # new_triangles=mesh_info['triangles']
     mesh_image = mesh.render.render_colors(mesh_info['vertices'],
                                            new_triangles,  # mesh_info['triangles'],
                                            mesh_info['colors'], 450, 450, BG=init_image)
@@ -236,5 +253,5 @@ if __name__ == '__main__':
     tex_modules = addModuleData(conf.inputTexDir)
     pos_modules = addModuleData(conf.inputPosDir)
     for i in range(conf.num):
-        print(i)
+        print('\r', i, end='')
         createImageData('image' + '%.4d' % i, conf.outputDir, tex_modules, pos_modules)

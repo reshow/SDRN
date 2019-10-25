@@ -10,7 +10,7 @@ class InitLoss(nn.Module):
     def __init__(self):
         super(InitLoss, self).__init__()
         self.criterion = getLossFunction('fwrse')()
-        self.metrics = getLossFunction('frse')()
+        self.metrics = getLossFunction('nme')()
 
     def forward(self, posmap, gt_posmap):
         loss_posmap = self.criterion(gt_posmap, posmap)
@@ -222,7 +222,7 @@ class AttentionLoss(nn.Module):
     def __init__(self):
         super(AttentionLoss, self).__init__()
         self.criterion0 = getLossFunction('fwrse')()
-        self.metrics0 = getLossFunction('frse')()
+        self.metrics0 = getLossFunction('nme')()
         self.criterion1 = getLossFunction('bce')(0.1)
         self.metrics1 = getLossFunction('mae')()
 
@@ -403,9 +403,9 @@ class SiamLoss(nn.Module):
         # self.criterion0 = getLossFunction('fwrse')(0)
         self.criterion1 = getLossFunction('fwrse')(0.5)
         self.criterion2 = getLossFunction('fwrse')(1)
-        self.metrics0 = getLossFunction('frse')(1.)
-        self.metrics1 = getLossFunction('frse')(1.)
-        self.metrics2 = getLossFunction('frse')(1.)
+        self.metrics0 = getLossFunction('nme')(1.)
+        self.metrics1 = getLossFunction('nme')(1.)
+        self.metrics2 = getLossFunction('nme')(1.)
 
     def forward(self, posmap, offset, kpt_posmap,
                 gt_posmap, gt_offset):
@@ -649,7 +649,7 @@ class TorchNet:
         # model.cuda()
 
         self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.5)
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.1)
 
     def buildQuaternionOffsetPRN(self):
 
@@ -673,7 +673,7 @@ class TorchNet:
         # model.cuda()
 
         self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.5)
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.1)
 
     def buildMeanOffsetPRN(self):
 

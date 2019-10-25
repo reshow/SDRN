@@ -21,7 +21,7 @@ if torch.cuda.is_available():
     face_mask_3D = face_mask_3D.cuda().float()
 
 
-def UVLoss(is_foreface=False, is_weighted=False):
+def UVLoss(is_foreface=False, is_weighted=False, is_nme=False):
     class TemplateLoss(nn.Module):
         def __init__(self, rate=1.0):
             super(TemplateLoss, self).__init__()
@@ -37,7 +37,18 @@ def UVLoss(is_foreface=False, is_weighted=False):
                 dist = dist * self.weight_mask
             if is_foreface:
                 dist = dist * (self.face_mask * face_mask_mean_fix_rate)
-            loss = torch.mean(dist)
+            if is_nme:
+                yt = y_true.permute(0, 2, 3, 1)
+                kpt = yt[:, uv_kpt[:, 0], uv_kpt[:, 1]]
+                left = torch.min(kpt[:, :, 0], dim=1)[0]
+                right = torch.max(kpt[:, :, 0], dim=1)[0]
+                top = torch.min(kpt[:, :, 1], dim=1)[0]
+                bottom = torch.max(kpt[:, :, 1], dim=1)[0]
+                bbox_size = torch.sqrt((right - left) * (bottom - top))
+                dist = torch.mean(dist, dim=(1, 2))
+                dist = dist / bbox_size
+
+            loss = dist
             return loss * self.rate
 
     return TemplateLoss
@@ -85,6 +96,8 @@ def getLossFunction(loss_func_name='SquareError'):
         return UVLoss(is_foreface=True, is_weighted=False)
     elif loss_func_name == 'ForefaceWeightedRootSquareError' or loss_func_name == 'fwrse':
         return UVLoss(is_foreface=True, is_weighted=True)
+    elif loss_func_name == 'nme':
+        return UVLoss(is_foreface=True, is_weighted=False, is_nme=True)
     elif loss_func_name == 'mae':
         return ParamLoss('mae')
     elif loss_func_name == 'mse':
