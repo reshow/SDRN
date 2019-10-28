@@ -32,6 +32,11 @@ def UVLoss(is_foreface=False, is_weighted=False, is_nme=False):
             self.face_mask.requires_grad = False
 
         def forward(self, y_true, y_pred):
+            if is_nme:
+                y_true = y_true * self.face_mask
+                y_pred = y_pred * self.face_mask
+                y_true[:, 2, :, :] = y_true[:, 2, :, :] - torch.mean(y_true[:, 2, :, :]) * face_mask_mean_fix_rate
+                y_pred[:, 2, :, :] = y_pred[:, 2, :, :] - torch.mean(y_pred[:, 2, :, :]) * face_mask_mean_fix_rate
             dist = torch.sqrt(torch.sum((y_true - y_pred) ** 2, 1))
             if is_weighted:
                 dist = dist * self.weight_mask

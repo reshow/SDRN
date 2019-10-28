@@ -157,10 +157,12 @@ class DataGenerator(Dataset):
                 #  image = self.augment(image)
 
                 # image = self.no_augment(image)
-                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                for i in range(3):
+                    image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
             else:
-                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                for i in range(3):
+                    image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
                 # image = self.no_augment(image)
             pos = pos / 280.
@@ -185,10 +187,12 @@ class DataGenerator(Dataset):
                 image, pos = augmentation.prnAugment_torch(image, pos, is_rotate=False)
                 # image = (image * 255.0).astype(np.uint8)
                 # image = self.augment(image)
-                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                for i in range(3):
+                    image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
             else:
-                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                for i in range(3):
+                    image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
 
             t0 = trans_mat[0:3, 0]
@@ -232,10 +236,12 @@ class DataGenerator(Dataset):
             attention_mask = self.all_image_data[index].getAttentionMask().astype(np.float32)
             if self.is_aug:
                 image, pos, attention_mask = augmentation.attentionAugment_torch(image, pos, attention_mask)
-                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                for i in range(3):
+                    image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
             else:
-                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                for i in range(3):
+                    image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
             pos = pos / 280.
             pos = self.toTensor(pos)
@@ -260,10 +266,12 @@ class DataGenerator(Dataset):
                     trans_mat = R_3d.dot(trans_mat)
                     image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
                 image, pos = augmentation.prnAugment_torch(image, pos, is_rotate=False)
-                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                for i in range(3):
+                    image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
             else:
-                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                for i in range(3):
+                    image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
 
             t0 = trans_mat[0:3, 0]
@@ -305,10 +313,12 @@ class DataGenerator(Dataset):
                 #     image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
                 # image, pos = augmentation.prnAugment_torch(image, pos, is_rotate=False)
                 image, pos = augmentation.prnAugment_torch(image, pos)
-                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                for i in range(3):
+                    image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
             else:
-                image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                for i in range(3):
+                    image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
 
             pos = pos / 280.
