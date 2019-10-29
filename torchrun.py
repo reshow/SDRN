@@ -64,7 +64,8 @@ class NetworkManager:
                           'AttentionPRN': [2, self.net.buildAttentionPRN, 'attention', 2, 2],
                           'QuaternionOffsetPRN': [3, self.net.buildQuaternionOffsetPRN, 'quaternionoffset', 4, 4],
                           'SiamPRN': [4, self.net.buildSiamPRN, 'siam', 3, 2],
-                          'MeanOffsetPRN': [3, self.net.buildMeanOffsetPRN, 'meanoffset', 4, 4]}
+                          'MeanOffsetPRN': [3, self.net.buildMeanOffsetPRN, 'meanoffset', 4, 4],
+                          'VisiblePRN': [4, self.net.buildVisiblePRN, 'siam', 3, 2]}
         self.mode = self.mode_dict['InitPRN']
 
     def buildModel(self, args):

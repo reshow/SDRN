@@ -247,7 +247,7 @@ class RPFQModule(nn.Module):
 
 
 class EstimateRebuildModule(nn.Module):
-    def __init__(self):
+    def __init__(self, is_visible=True):
         super(EstimateRebuildModule, self).__init__()
         self.mean_posmap_tensor = nn.Parameter(torch.from_numpy(mean_posmap.transpose((2, 0, 1))))
         self.mean_posmap_tensor.requires_grad = False
@@ -257,6 +257,7 @@ class EstimateRebuildModule(nn.Module):
         revert_opetator = np.array([[1., -1., 1.], [1., -1., 1.], [1., -1., 1.]]).astype(np.float32)
         self.revert_operator = nn.Parameter(torch.from_numpy(revert_opetator))
         self.revert_operator.requires_grad = False
+        self.is_visible = is_visible
 
     def forward(self, Offset, Posmap_kpt):
         offsetmap = Offset * self.offset_scale + self.mean_posmap_tensor
@@ -272,32 +273,60 @@ class EstimateRebuildModule(nn.Module):
             srckpt = offsetmap_np[i][uv_kpt[:, 0], uv_kpt[:, 1]]
             dstkpt = temp_kptmap[uv_kpt[:, 0], uv_kpt[:, 1]]
             tform = transform.estimate_transform('similarity', srckpt, dstkpt)
-            offsetmap_np[i] = offsetmap_np[i].dot(tform.params[0:3, 0:3].T) + tform.params[0:3, 3]
+            if not self.is_visible:
+                offsetmap_np[i] = offsetmap_np[i].dot(tform.params[0:3, 0:3].T) + tform.params[0:3, 3]
+            else:
+                R = tform.params[0:3, 0:3].T
+
+                visible_srckpt = []
+                visible_dstkpt = []
+
+                yaw_angle = np.arctan2(-R[2, 0], np.sqrt(R[0, 0] ** 2 + R[1, 0] ** 2))
+                yaw_rate = yaw_angle / np.pi * 0.9
+                left = 0 + yaw_rate * 256
+                right = 256 + yaw_rate * 256
+                if left < 0:
+                    left = 0
+                if right > 256:
+                    right = 256
+                for j in range(68):
+                    if uv_kpt[j, 1] <= left or uv_kpt[j, 1] >= right:
+                        continue
+                    else:
+                        visible_srckpt.append(srckpt[j])
+                        visible_dstkpt.append(dstkpt[j])
+                if len(visible_dstkpt) < 10:
+                    offsetmap_np[i] = offsetmap_np[i].dot(tform.params[0:3, 0:3].T) + tform.params[0:3, 3]
+                else:
+                    visible_dstkpt = np.array(visible_dstkpt)
+                    visible_srckpt = np.array(visible_srckpt)
+                    visible_tform = transform.estimate_transform('similarity', visible_srckpt, visible_dstkpt)
+                    offsetmap_np[i] = offsetmap_np[i].dot(visible_tform.params[0:3, 0:3].T) + visible_tform.params[0:3, 3]
 
         outpos = torch.from_numpy(offsetmap_np).to(self.mean_posmap_tensor.device)
         outpos = outpos.permute(0, 3, 1, 2)
         return outpos
 
 
-# numpy version
-def vector2Rotation(src, dst):
-    a2 = src / np.sqrt(src.dot(src))
-    b2 = dst / np.sqrt(dst.dot(dst))
-    u = np.cross(a2, b2)
-    u = u / np.sqrt(u.dot(u))
-    theta = np.arccos(np.sum(a2 * b2)) / 2
-    q1 = np.cos(theta)
-    q234 = np.sin(theta) * u
-    q2 = q234[0]
-    q3 = q234[1]
-    q4 = q234[2]
-    R = [[2 * q1 ** 2 - 1 + 2 * q2 ** 2, 2 * (q2 * q3 + q1 * q4), 2 * (q2 * q4 - q1 * q3)],
-         [2 * (q2 * q3 - q1 * q4), 2 * q1 ** 2 - 1 + 2 * q3 ** 2, 2 * (q3 * q4 + q1 * q2)],
-         [2 * (q2 * q4 + q1 * q3), 2 * (q3 * q4 - q1 * q2), 2 * q1 ** 2 - 1 + 2 * q4 ** 2]]
-    s1 = np.sqrt(dst.dot(dst))
-    s2 = np.sqrt(src.dot(src))
-    R = np.array(R) * s1 / s2
-    return R
+# 根据4组对应点计算旋转矩阵
+def vector2Tform_np(p, q):
+    A = np.stack([p[0] - p[1], p[0] - p[2], p[0] - p[3]])
+    B = np.stack([q[0] - q[1], q[0] - q[2], q[0] - q[3]])
+    if np.linalg.det(A) < 1e-4:
+        return None, None
+    R = np.linalg.inv(A).dot(B)
+    T = np.mean(q - p.dot(R), axis=0)
+    return R, T
+
+
+def vector2Tform(p, q):
+    A = torch.stack([p[0] - p[1], p[0] - p[2], p[0] - p[3]])
+    # if torch.abs(torch.det(A)) < 1e-4:
+    #     return None, None
+    B = torch.stack([q[0] - q[1], q[0] - q[2], q[0] - q[3]])
+    R = torch.inverse(A).mm(B)
+    T = torch.mean(q - p.mm(R), dim=0)
+    return R, T
 
 
 class VisibleRebuildModule(nn.Module):
@@ -312,23 +341,124 @@ class VisibleRebuildModule(nn.Module):
         self.revert_operator = nn.Parameter(torch.from_numpy(revert_opetator))
         self.revert_operator.requires_grad = False
 
-    def forward(self, Offset, Posmap_kpt):
+    def forward(self, Offset, Posmap_kpt, is_torch=False):
         offsetmap = Offset * self.offset_scale + self.mean_posmap_tensor
         offsetmap = offsetmap.permute(0, 2, 3, 1)
         kptmap = Posmap_kpt.permute(0, 2, 3, 1)
-        outpos = torch.zeros((Offset.shape[0], 256, 256, 3), device=Offset.shape)
+        outpos = torch.zeros((Offset.shape[0], 65536, 3), device=Offset.device)
 
-        visibility = torch.ones((Offset.shape[0], 68), device=Offset.shape)
         kpt_dst = kptmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
         kpt_src = offsetmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
-        for i in range(Offset.shape[0]):
-            for x in range(68):
-                for y in range(68):
-                    if x == y:
-                        continue
-                    dst = kpt_dst[x] - kpt_dst[y]
-                    src = kpt_src[x] - kpt_src[y]
 
+        offsetmap = offsetmap.reshape((Offset.shape[0], 65536, 3))
+
+        if is_torch:
+            for i in range(Offset.shape[0]):
+                s_coarse = 0
+                sr_coarse = torch.zeros((3, 3), device=Offset.device)
+                for x in range(0, 64, 4):
+                    for y in range(x + 2, x + 3, 4):
+                        p = torch.stack([kpt_src[i][x], kpt_src[i][x + 1], kpt_src[i][y], kpt_src[i][y + 1]])
+                        q = torch.stack([kpt_dst[i][x], kpt_dst[i][x + 1], kpt_dst[i][y], kpt_dst[i][y + 1]])
+                        # temp_R[i][x // 4], temp_T[i][x // 4] = vector2Tform(p, q)
+                        r, t = vector2Tform(p, q)
+                        if r is None:
+                            continue
+                        else:
+                            sr_coarse = sr_coarse + r
+                            s_coarse = s_coarse + 1
+                R = sr_coarse / s_coarse
+
+                visibility = torch.ones(68, device=Offset.device)
+                yaw_angle = torch.atan2(-R[2, 0], torch.sqrt(R[0, 0] ** 2 + R[1, 0] ** 2))
+                yaw_rate = yaw_angle / np.pi
+                left = 0 + yaw_rate * 256
+                right = 256 + yaw_rate * 256
+                if left < 0:
+                    left = 0
+                if right > 256:
+                    right = 256
+                for j in range(68):
+                    if uv_kpt[j, 1] <= left or uv_kpt[j, 1] >= right:
+                        visibility[j] = 1e-3
+                    else:
+                        visibility[j] = 1
+
+                s_precise = 0
+                sr_precise = torch.zeros((3, 3), device=Offset.device)
+                st_precise = torch.zeros(3, device=Offset.device)
+                for x in range(0, 64, 4):
+                    for y in range(x + 2, x + 3, 4):
+                        p = torch.stack([kpt_src[i][x], kpt_src[i][x + 1], kpt_src[i][y], kpt_src[i][y + 1]])
+                        q = torch.stack([kpt_dst[i][x], kpt_dst[i][x + 1], kpt_dst[i][y], kpt_dst[i][y + 1]])
+                        r, t = vector2Tform(p, q)
+                        if r is None:
+                            continue
+                        else:
+                            weight = visibility[x] * visibility[x + 1] * visibility[y] * visibility[y + 1]
+                            s_precise = s_precise + weight
+                            sr_precise = sr_precise + weight * r
+                            st_precise = st_precise + weight * t
+
+                R_precise = sr_precise / s_precise
+                T_precise = st_precise / s_precise
+                outpos[i] = offsetmap[i].mm(R_precise) + T_precise
+
+        else:
+            for i in range(Offset.shape[0]):
+                # s_coarse = 0
+                # sr_coarse = np.zeros((3, 3))
+                kpt_src_np = kpt_src[i].detach().cpu().numpy()
+                kpt_dst_np = kpt_dst[i].detach().cpu().numpy()
+                # for x in range(0, 44, 4):
+                #     for y in range(x + 10, 63, 1):
+                #         p = np.stack([kpt_src_np[x], kpt_src_np[x + 10], kpt_src_np[y], kpt_src_np[y + 5]])
+                #         q = np.stack([kpt_dst_np[x], kpt_dst_np[x + 10], kpt_dst_np[y], kpt_dst_np[y + 5]])
+                #         # temp_R[i][x // 4], temp_T[i][x // 4] = vector2Tform(p, q)
+                #         r, t = vector2Tform_np(p, q)
+                #         if r is None:
+                #             continue
+                #         else:
+                #             sr_coarse = sr_coarse + r
+                #             s_coarse = s_coarse + 1
+                # R = sr_coarse / s_coarse
+
+                visibility = np.ones(68)
+                # yaw_angle = np.arctan2(-R[2, 0], np.sqrt(R[0, 0] ** 2 + R[1, 0] ** 2))
+                # yaw_rate = yaw_angle / np.pi
+                # left = 0 + yaw_rate * 256
+                # right = 256 + yaw_rate * 256
+                # if left < 0:
+                #     left = 0
+                # if right > 256:
+                #     right = 256
+                # for j in range(68):
+                #     if uv_kpt[j, 1] <= left or uv_kpt[j, 1] >= right:
+                #         visibility[j] = 1e-3
+                #     else:
+                #         visibility[j] = 1
+
+                s_precise = 0
+                sr_precise = np.zeros((3, 3))
+                st_precise = np.zeros(3)
+                for x in range(16, 28, 1):
+                    for y in range(48, 68, 1):
+                        p = np.stack([kpt_src_np[x], kpt_src_np[x + 20], kpt_src_np[y], kpt_src_np[y // 2 + 5]])
+                        q = np.stack([kpt_dst_np[x], kpt_dst_np[x + 20], kpt_dst_np[y], kpt_dst_np[y // 2 + 5]])
+                        r, t = vector2Tform_np(p, q)
+                        if r is None:
+                            continue
+                        else:
+                            weight = visibility[x] * visibility[x + 20] * visibility[y] * visibility[y // 2 + 5]
+                            s_precise = s_precise + weight
+                            sr_precise = sr_precise + weight * r
+                            st_precise = st_precise + weight * t
+
+                R_precise = torch.from_numpy(sr_precise / s_precise).to(Offset.device).float()
+                T_precise = torch.from_numpy(st_precise / s_precise).to(Offset.device).float()
+                outpos[i] = offsetmap[i].mm(R_precise) + T_precise
+
+        outpos = outpos.reshape((Offset.shape[0], 256, 256, 3))
         outpos = outpos.permute(0, 3, 1, 2)
         return outpos
 

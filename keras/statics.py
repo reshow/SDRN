@@ -119,3 +119,52 @@ for i in range(7):
 # plt.show()
 # plt.hist(lz3, group, histtype='bar', rwidth=0.8)
 # plt.show()
+
+
+def crossMat(w):
+    return np.array([[0, -w[2], w[1]],
+                     [w[2], 0, -w[0]],
+                     [-w[1], w[0], 0]])
+
+
+def norm(x):
+    return x / np.sqrt(x.dot(x))
+
+
+# 估计出的旋转矩阵只能保证对应向量的旋转是正确的  但沿着旋转后的向量的方向旋转仍然能有无穷多组解
+def vector2Rotation(src, dst):
+    from math import acos, cos, sin
+    p = src / np.sqrt(src.dot(src))
+    q = dst / np.sqrt(dst.dot(dst))
+    theta = acos(p.dot(q))
+    c = p.dot(crossMat(q))
+    c = c / np.sqrt(c.dot(c))
+    W = crossMat(c)
+    I = np.diagflat([1, 1, 1])
+    R = I + sin(theta) * W + (1 - cos(theta)) * (W.dot(W))
+    s1 = np.sqrt(dst.dot(dst))
+    s2 = np.sqrt(src.dot(src))
+    R = R * s1 / s2
+    return R.T
+
+
+def planeProjection(u, n):
+    n = n / np.sqrt(n.dot(n))
+    proj = u - (u.dot(n)) * n
+    return proj
+
+
+# 需要两组向量确定两轮旋转
+def doubleVector2Rotation(src, dst, src2, dst2, src3, dst3):
+    R1 = vector2Rotation(src, dst)
+    wd = src2.dot(R1)
+
+    c = dst / np.sqrt(dst.dot(dst))  # 第二轮旋转的旋转轴为第一次的dst
+    wdp = planeProjection(wd, c)
+    bn2p = planeProjection(dst2, c)
+
+    R2 = vector2Rotation(wdp, bn2p)
+
+    # c=dst2/np.sqrt(dst.dot(dst2))
+
+    return R1.dot(R2)

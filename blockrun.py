@@ -21,6 +21,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from buildblocks import data_block_names, NUM_BLOCKS
 import threading
+import random
 
 now_time = time.localtime()
 save_dir_time = '/' + str(now_time.tm_year) + '-' + str(now_time.tm_mon) + '-' + str(now_time.tm_mday) + '-' \
@@ -100,7 +101,8 @@ class NetworkManager:
                           'AttentionPRN': [2, self.net.buildAttentionPRN, 'attention', 2, 2],
                           'QuaternionOffsetPRN': [3, self.net.buildQuaternionOffsetPRN, 'quaternionoffset', 4, 4],
                           'SiamPRN': [4, self.net.buildSiamPRN, 'siam', 3, 2],
-                          'MeanOffsetPRN': [3, self.net.buildMeanOffsetPRN, 'meanoffset', 4, 4]}
+                          'MeanOffsetPRN': [3, self.net.buildMeanOffsetPRN, 'meanoffset', 4, 4],
+                          'VisiblePRN': [4, self.net.buildVisiblePRN, 'siam', 3, 2]}
         self.mode = self.mode_dict['InitPRN']
 
         self.num_thread = args.numReadingThread
@@ -169,7 +171,6 @@ class NetworkManager:
 
         for epoch in range(self.start_epoch, self.epoch):
             print('Epoch: %d' % epoch)
-            scheduler.step()
             model.train()
 
             sum_loss = 0.0
@@ -177,10 +178,11 @@ class NetworkManager:
             num_output = self.mode[3]
             num_input = self.mode[4]
             sum_metric_loss = np.zeros(num_output)
-
             num_fed_batch = 0
+
+            random.shuffle(data_block_names)
             for block_id in range(NUM_BLOCKS // self.num_block_per_part):
-                task_per_worker = self.num_block_per_part // self.num_thread
+                task_per_worker = int(math.ceil(self.num_block_per_part / self.num_thread))
                 st_idx = [block_id * self.num_block_per_part + task_per_worker * i for i in range(self.num_thread)]
                 ed_idx = [min(NUM_BLOCKS, block_id * self.num_block_per_part + task_per_worker * (i + 1)) for i in range(self.num_thread)]
                 jobs = []
@@ -270,6 +272,7 @@ class NetworkManager:
             for j in range(self.mode[3]):
                 writer.add_scalar('train/metrics%d' % j, sum_metric_loss[j] / len(train_data_loader), epoch + 1)
                 writer.add_scalar('val/metrics%d' % j, val_sum_metric_loss[j] / len(val_data_loader), epoch + 1)
+            scheduler.step()
 
     def test(self, error_func_list=None, is_visualize=False):
         total_task = len(self.test_data)
@@ -379,8 +382,8 @@ if __name__ == '__main__':
     parser.add_argument('--startEpoch', default=0, type=int)
     parser.add_argument('--isPreRead', default=False, type=ast.literal_eval)
     parser.add_argument('--numWorker', default=4, type=int, help='loader worker number')
-    parser.add_argument('--numReadingThread', default=10, type=int)
-    parser.add_argument('--numBlockPerPart', default=60, type=int)
+    parser.add_argument('--numReadingThread', default=9, type=int)
+    parser.add_argument('--numBlockPerPart', default=63, type=int)
 
     run_args = parser.parse_args()
 

@@ -474,7 +474,7 @@ class SiamPRN(nn.Module):
     def forward(self, inpt, gt_posmap, gt_offset, is_rebuild=False):
         x = self.layer0(inpt)
         x = self.encoder(x)
-        x_new=x.detach()
+        x_new = x.detach()
         offset = self.decoder(x_new)
 
         kpt_posmap = self.decoder_kpt(x)
@@ -603,7 +603,7 @@ class MeanOffsetPRN(nn.Module):
 class VisibleLoss(nn.Module):
     def __init__(self):
         super(VisibleLoss, self).__init__()
-        # self.criterion0 = getLossFunction('fwrse')(0)
+        self.criterion0 = getLossFunction('fwrse')(0)
         self.criterion1 = getLossFunction('fwrse')(0.5)
         self.criterion2 = getLossFunction('fwrse')(1)
         self.metrics0 = getLossFunction('nme')(1.)
@@ -612,10 +612,10 @@ class VisibleLoss(nn.Module):
 
     def forward(self, posmap, offset, kpt_posmap,
                 gt_posmap, gt_offset):
-        # loss_posmap = self.criterion0(gt_posmap, posmap)
+        loss_posmap = self.criterion0(gt_posmap, posmap)
         loss_offset = self.criterion1(gt_offset, offset)
         loss_kpt = self.criterion2(gt_posmap, kpt_posmap)
-        loss = loss_offset + loss_kpt
+        loss = loss_offset + loss_kpt + loss_posmap
 
         metrics_posmap = self.metrics0(gt_posmap, posmap)
         metrics_offset = self.metrics1(gt_offset, offset)
@@ -644,8 +644,14 @@ class VisiblePRN(nn.Module):
         self.decoder = nn.Sequential(
             ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1),  # 8 x 8 x 512
             ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 16, kernel_size=4, stride=2),  # 16 x 16 x 256
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1),  # 16 x 16 x 256
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1),  # 16 x 16 x 256
             ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 8, kernel_size=4, stride=2),  # 32 x 32 x 128
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1),  # 32 x 32 x 128
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1),  # 32 x 32 x 128
             ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 4, kernel_size=4, stride=2),  # 64 x 64 x 64
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1),  # 64 x 64 x 64
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1),  # 64 x 64 x 64
             ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 2, kernel_size=4, stride=2),
             ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 1, kernel_size=4, stride=2),
@@ -671,13 +677,13 @@ class VisiblePRN(nn.Module):
             ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Tanh()))
-        self.rebuilder = EstimateRebuildModule()
-        self.loss = SiamLoss()
+        self.rebuilder = VisibleRebuildModule()
+        self.loss = VisibleLoss()
 
-    def forward(self, inpt, gt_posmap, gt_offset, is_rebuild=False):
+    def forward(self, inpt, gt_posmap, gt_offset, is_rebuild=True):
         x = self.layer0(inpt)
         x = self.encoder(x)
-        x_new=x.detach()
+        x_new = x.detach()
         offset = self.decoder(x_new)
 
         kpt_posmap = self.decoder_kpt(x)
@@ -769,6 +775,18 @@ class TorchNet:
         self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.1)
 
+    def buildVisiblePRN(self):
+
+        self.model = VisiblePRN()
+
+        if self.gpu_num > 1:
+            self.model = nn.DataParallel(self.model, device_ids=self.visible_devices)
+        self.model.to(self.device)
+        # model.cuda()
+
+        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.1)
+
     def buildMeanOffsetPRN(self):
 
         self.model = MeanOffsetPRN()
@@ -786,6 +804,6 @@ class TorchNet:
             # map_location = lambda storage, loc: storage
             self.model.module.load_state_dict(torch.load(model_path))  # , map_location=map_location))
         else:
-            self.model.load_state_dict(torch.load(model_path,map_location='cuda:0'))
+            self.model.load_state_dict(torch.load(model_path, map_location='cuda:0'))
             # self.model.load_state_dict(torch.load(model_path))
         self.model.to(self.device)
