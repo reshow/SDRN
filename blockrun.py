@@ -358,6 +358,8 @@ class NetworkManager:
 
 
 if __name__ == '__main__':
+    random.seed(0)
+
     parser = argparse.ArgumentParser(description='model arguments')
 
     parser.add_argument('--gpu', default=1, type=int, help='gpu number')

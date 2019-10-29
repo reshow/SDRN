@@ -19,6 +19,7 @@ import masks
 from data import getColors
 import torch
 from torch.utils.tensorboard import SummaryWriter
+import random
 
 now_time = time.localtime()
 save_dir_time = '/' + str(now_time.tm_year) + '-' + str(now_time.tm_mon) + '-' + str(now_time.tm_mday) + '-' \
@@ -326,6 +327,7 @@ class NetworkManager:
 
 
 if __name__ == '__main__':
+    random.seed(0)
     parser = argparse.ArgumentParser(description='model arguments')
 
     parser.add_argument('--gpu', default=1, type=int, help='gpu number')

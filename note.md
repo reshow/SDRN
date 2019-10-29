@@ -48,3 +48,6 @@
 
         m0.5 [attention2]  10-15-13:28+2019-10-17-10-29-16  lossrate0.1  noclip  l2rate=0.0001 [get3.68]
         
+
+
+    10.28 lr5e-4 batchsize 32比16略好   10轮下降0.1不可取
