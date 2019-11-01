@@ -157,10 +157,12 @@ class DataGenerator(Dataset):
                 #  image = self.augment(image)
 
                 # image = self.no_augment(image)
+
                 for i in range(3):
                     image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
             else:
+                # image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
                 for i in range(3):
                     image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)

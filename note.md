@@ -51,3 +51,7 @@
 
 
     10.28 lr5e-4 batchsize 32比16略好   10轮下降0.1不可取
+    
+    600blocks:
+    10.31 lr1e-5warmup siam
+    11.1 9:55 1r1e-5warmup init

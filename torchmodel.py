@@ -69,7 +69,7 @@ class InitLoss(nn.Module):
     def __init__(self):
         super(InitLoss, self).__init__()
         self.criterion = getLossFunction('fwrse')()
-        self.metrics = getLossFunction('nme')()
+        self.metrics = getLossFunction('frse')()
 
     def forward(self, posmap, gt_posmap):
         loss_posmap = self.criterion(gt_posmap, posmap)
@@ -460,11 +460,11 @@ class SiamLoss(nn.Module):
     def __init__(self):
         super(SiamLoss, self).__init__()
         # self.criterion0 = getLossFunction('fwrse')(0)
-        self.criterion1 = getLossFunction('fwrse')(0.5)
+        self.criterion1 = getLossFunction('fwrse')(1)
         self.criterion2 = getLossFunction('fwrse')(1)
-        self.metrics0 = getLossFunction('nme')(1.)
-        self.metrics1 = getLossFunction('nme')(1.)
-        self.metrics2 = getLossFunction('nme')(1.)
+        self.metrics0 = getLossFunction('frse')(1.)
+        self.metrics1 = getLossFunction('frse')(1.)
+        self.metrics2 = getLossFunction('frse')(1.)
 
     def forward(self, posmap, offset, kpt_posmap,
                 gt_posmap, gt_offset):
@@ -665,9 +665,9 @@ class VisibleLoss(nn.Module):
         self.criterion0 = getLossFunction('fwrse')(0)
         self.criterion1 = getLossFunction('fwrse')(0.5)
         self.criterion2 = getLossFunction('fwrse')(1)
-        self.metrics0 = getLossFunction('nme')(1.)
-        self.metrics1 = getLossFunction('nme')(1.)
-        self.metrics2 = getLossFunction('nme')(1.)
+        self.metrics0 = getLossFunction('frse')(1.)
+        self.metrics1 = getLossFunction('frse')(1.)
+        self.metrics2 = getLossFunction('frse')(1.)
 
     def forward(self, posmap, offset, kpt_posmap,
                 gt_posmap, gt_offset):
@@ -786,7 +786,7 @@ class TorchNet:
         # model.cuda()
 
         self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
-        scheduler_exp = optim.lr_scheduler.ExponentialLR(self.optimizer, 0.85, last_epoch=-1)
+        scheduler_exp = optim.lr_scheduler.ExponentialLR(self.optimizer, 0.8)
         scheduler_warmup = GradualWarmupScheduler(self.optimizer, multiplier=8, total_epoch=3, after_scheduler=scheduler_exp)
         self.scheduler = scheduler_warmup
         # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=1, gamma=0.85)
@@ -834,8 +834,12 @@ class TorchNet:
         self.model.to(self.device)
         # model.cuda()
 
+        # self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
+        # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.1)
         self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.1)
+        scheduler_exp = optim.lr_scheduler.ExponentialLR(self.optimizer, 0.8)
+        scheduler_warmup = GradualWarmupScheduler(self.optimizer, multiplier=8, total_epoch=3, after_scheduler=scheduler_exp)
+        self.scheduler = scheduler_warmup
 
     def buildVisiblePRN(self):
 

@@ -170,7 +170,8 @@ class NetworkManager:
                                         is_pre_read=True, num_worker=0)
 
         for epoch in range(self.start_epoch, self.epoch):
-            print('Epoch: %d' % epoch)
+            scheduler.step()
+            print('Epoch: %d' % (epoch+1))
             model.train()
 
             sum_loss = 0.0
@@ -220,7 +221,8 @@ class NetworkManager:
                     optimizer.step()
                     sum_loss += loss.item()
                     print('\r', end='')
-                    print('[epoch:%d, block:%d/%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch, block_id, NUM_BLOCKS // self.num_block_per_part, i, total_itr_num,
+                    print('[epoch:%d, block:%d/%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch+1, block_id, NUM_BLOCKS // self.num_block_per_part, i,
+                                                                                         total_itr_num,
                                                                                          int(time.time() - t_start), sum_loss / (num_fed_batch + 1)), end='')
                     for j in range(num_output):
                         sum_metric_loss[j] += metrics_loss[j]
@@ -272,7 +274,7 @@ class NetworkManager:
             for j in range(self.mode[3]):
                 writer.add_scalar('train/metrics%d' % j, sum_metric_loss[j] / len(train_data_loader), epoch + 1)
                 writer.add_scalar('val/metrics%d' % j, val_sum_metric_loss[j] / len(val_data_loader), epoch + 1)
-            scheduler.step()
+
 
     def test(self, error_func_list=None, is_visualize=False):
         total_task = len(self.test_data)
@@ -384,8 +386,8 @@ if __name__ == '__main__':
     parser.add_argument('--startEpoch', default=0, type=int)
     parser.add_argument('--isPreRead', default=False, type=ast.literal_eval)
     parser.add_argument('--numWorker', default=4, type=int, help='loader worker number')
-    parser.add_argument('--numReadingThread', default=9, type=int)
-    parser.add_argument('--numBlockPerPart', default=63, type=int)
+    parser.add_argument('--numReadingThread', default=10, type=int)
+    parser.add_argument('--numBlockPerPart', default=60, type=int)
 
     run_args = parser.parse_args()
 
