@@ -386,8 +386,8 @@ if __name__ == '__main__':
     parser.add_argument('--startEpoch', default=0, type=int)
     parser.add_argument('--isPreRead', default=False, type=ast.literal_eval)
     parser.add_argument('--numWorker', default=4, type=int, help='loader worker number')
-    parser.add_argument('--numReadingThread', default=10, type=int)
-    parser.add_argument('--numBlockPerPart', default=60, type=int)
+    parser.add_argument('--numReadingThread', default=9, type=int)
+    parser.add_argument('--numBlockPerPart', default=63, type=int)
 
     run_args = parser.parse_args()
 

@@ -55,3 +55,6 @@
     600blocks:
     10.31 lr1e-5warmup siam
     11.1 9:55 1r1e-5warmup init
+    
+    630blocks
+    11.1 14:29 lr1e-5 init [attention]

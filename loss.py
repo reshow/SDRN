@@ -50,10 +50,10 @@ def UVLoss(is_foreface=False, is_weighted=False, is_nme=False):
                 top = torch.min(kpt[:, :, 1], dim=1)[0]
                 bottom = torch.max(kpt[:, :, 1], dim=1)[0]
                 bbox_size = torch.sqrt((right - left) * (bottom - top))
-                dist = torch.mean(dist, dim=(1, 2))
+                # dist = torch.mean(dist, dim=(1, 2))
                 dist = dist / bbox_size
 
-            loss = dist
+            loss = torch.mean(dist)
             return loss * self.rate
 
     return TemplateLoss
@@ -76,6 +76,32 @@ def ParamLoss(mode):
             else:
                 dist = F.mse_loss(y_pred, y_true)
             return dist * self.rate
+
+    return TemplateLoss
+
+
+def SmoothLoss():
+    class TemplateLoss(nn.Module):
+        def __init__(self, rate=1.0):
+            super(TemplateLoss, self).__init__()
+            self.rate = rate
+            kernel = np.array([[0, -1, 0],
+                               [-1, 4, -1],
+                               [0, -1, 0]])
+            kernel = torch.from_numpy(kernel).float()
+            kernel = kernel.unsqueeze(0)
+            kernel = torch.stack([kernel, kernel, kernel])
+            self.kernel = nn.Parameter(kernel)
+            self.kernel.requires_grad = False
+            self.face_mask = nn.Parameter(face_mask.clone())
+            self.face_mask.requires_grad = False
+
+        def forward(self, y_pred):
+            diff = F.conv2d(y_pred, self.kernel, padding=1, groups=3)
+            dist = torch.sqrt(torch.sum(diff ** 2, 1))
+            dist = dist * (self.face_mask * face_mask_mean_fix_rate)
+            loss = torch.mean(dist)
+            return loss * self.rate
 
     return TemplateLoss
 

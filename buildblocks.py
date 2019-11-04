@@ -9,7 +9,7 @@ import scipy.io as sio
 import ast
 
 all_data = []
-NUM_BLOCKS = 600
+NUM_BLOCKS = 630
 if not os.path.exists('data/images/td/'):
     os.mkdir('data/images/td/')
 data_block_names = ['data/images/td/block' + str(i) + '.pkl' for i in range(NUM_BLOCKS)]
