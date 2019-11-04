@@ -285,7 +285,7 @@ class NetworkManager:
                 print('')
                 if is_visualize:
 
-                    if temp_errors[0] > 0.1:
+                    if temp_errors[0] > 0.06:
                         init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
                         diff = np.square(gt_y - p) * masks.face_mask_np3d
                         dist2d = np.sqrt(np.sum(diff[:, :, 0:2], axis=-1))

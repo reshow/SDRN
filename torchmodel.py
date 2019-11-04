@@ -281,7 +281,7 @@ class AttentionLoss(nn.Module):
     def __init__(self):
         super(AttentionLoss, self).__init__()
         self.criterion0 = getLossFunction('fwrse')()
-        self.metrics0 = getLossFunction('nme')()
+        self.metrics0 = getLossFunction('frse')()
         self.criterion1 = getLossFunction('bce')(0.1)
         self.metrics1 = getLossFunction('mae')()
 
@@ -811,7 +811,9 @@ class TorchNet:
         # model.cuda()
 
         self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.1)
+        scheduler_exp = optim.lr_scheduler.ExponentialLR(self.optimizer, 0.8)
+        scheduler_warmup = GradualWarmupScheduler(self.optimizer, multiplier=8, total_epoch=3, after_scheduler=scheduler_exp)
+        self.scheduler = scheduler_warmup
 
     def buildQuaternionOffsetPRN(self):
 

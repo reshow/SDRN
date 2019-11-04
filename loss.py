@@ -153,6 +153,20 @@ def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=Fals
         y_true[:, :, 2] = y_true[:, :, 2] - y_true_mean
         y_pred[:, :, 2] = y_pred[:, :, 2] - y_pred_mean
 
+        # y_true[:, :, 0] = y_true[:, :, 0] * face_mask_np
+        # y_pred[:, :, 0] = y_pred[:, :, 0] * face_mask_np
+        # y_true_mean0 = np.mean(y_true[:, :, 0]) * face_mask_mean_fix_rate
+        # y_pred_mean0 = np.mean(y_pred[:, :, 0]) * face_mask_mean_fix_rate
+        # y_true[:, :, 0] = y_true[:, :, 0] - y_true_mean0
+        # y_pred[:, :, 0] = y_pred[:, :, 0] - y_pred_mean0
+        #
+        # y_true[:, :, 1] = y_true[:, :, 1] * face_mask_np
+        # y_pred[:, :, 1] = y_pred[:, :, 1] * face_mask_np
+        # y_true_mean1 = np.mean(y_true[:, :, 1]) * face_mask_mean_fix_rate
+        # y_pred_mean1 = np.mean(y_pred[:, :, 1]) * face_mask_mean_fix_rate
+        # y_true[:, :, 1] = y_true[:, :, 1] - y_true_mean1
+        # y_pred[:, :, 1] = y_pred[:, :, 1] - y_pred_mean1
+
         if is_landmark:
             # the gt landmark is not the same as the landmarks get from mesh using index
             if is_gt_landmark:

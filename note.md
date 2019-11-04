@@ -57,4 +57,7 @@
     11.1 9:55 1r1e-5warmup init
     
     630blocks
-    11.1 14:29 lr1e-5 init [attention]
+    11.1 14:29 lr1e-5 init 
+    11.3 23:00 attentionbatch16/48   10:35 siam
+    
+ 

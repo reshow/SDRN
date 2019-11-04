@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 from data import mean_posmap, uv_kpt
 from skimage import io, transform
+import visualize
 
 
 # Hout​=(Hin​−1)stride[0]−2padding[0]+kernels​ize[0]+outputp​adding[0]
@@ -283,12 +284,22 @@ class EstimateRebuildModule(nn.Module):
 
                 yaw_angle = np.arctan2(-R[2, 0], np.sqrt(R[0, 0] ** 2 + R[1, 0] ** 2))
                 yaw_rate = yaw_angle / np.pi * 0.9
-                left = 0 + yaw_rate * 256
-                right = 256 + yaw_rate * 256
-                if left < 0:
-                    left = 0
-                if right > 256:
-                    right = 256
+                left = int(0 + yaw_rate * 256)
+                right = int(256 + yaw_rate * 256)
+                if left < 1:
+                    left = 1
+                if left > 125:
+                    left = 125
+                if right > 255:
+                    right = 255
+                if right < 133:
+                    right = 133
+
+                # offsetmap_np[i, :, 0:left, 0] = (offsetmap_np[i, :, 0:left, 0] - offsetmap_np[i, :, 255:255 - left:-1, 0]) / 2
+                # offsetmap_np[i, :, 0:left, 1] = (offsetmap_np[i, :, 0:left, 1] + offsetmap_np[i, :, 255:255 - left:-1, 1]) / 2
+                # offsetmap_np[i, :, 0:left, 2] = (offsetmap_np[i, :, 0:left, 2] + offsetmap_np[i, :, 255:255 - left:-1, 2]) / 2
+                # visualize.show(offsetmap_np[i,:,:,0])
+
                 for j in range(68):
                     if uv_kpt[j, 1] <= left or uv_kpt[j, 1] >= right:
                         continue
