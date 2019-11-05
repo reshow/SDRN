@@ -248,7 +248,7 @@ class RPFQModule(nn.Module):
 
 
 class EstimateRebuildModule(nn.Module):
-    def __init__(self, is_visible=True):
+    def __init__(self, is_visible=False):
         super(EstimateRebuildModule, self).__init__()
         self.mean_posmap_tensor = nn.Parameter(torch.from_numpy(mean_posmap.transpose((2, 0, 1))))
         self.mean_posmap_tensor.requires_grad = False
@@ -472,6 +472,47 @@ class VisibleRebuildModule(nn.Module):
         outpos = outpos.reshape((Offset.shape[0], 256, 256, 3))
         outpos = outpos.permute(0, 3, 1, 2)
         return outpos
+
+
+def kpt2Tform(kpt_src, kpt_dst):
+    sum_dist1 = torch.sum(torch.norm(kpt_src - kpt_src[0], dim=1))
+    sum_dist2 = torch.sum(torch.norm(kpt_dst - kpt_dst[0], dim=1))
+    A = kpt_src * sum_dist2 / sum_dist1
+    B = kpt_dst
+    mu_A = A.mean(dim=0)
+    mu_B = B.mean(dim=0)
+    AA = A - mu_A
+    BB = B - mu_B
+    H = AA.permute(1, 0).mm(BB)
+    U, S, V = torch.svd(H)
+    R = V.mm(U.permute(1, 0))
+    # if np.linalg.det(R) < 0:
+    #     print('singular R')
+    #     Vt[2, :] *= -1
+    #     R = Vt.T.dot(U.T)
+    t = torch.mean(B - A.mm(R.permute(1, 0)),dim=0)
+    return R * sum_dist2 / sum_dist1, t
+
+
+# AR+T=B
+def kpt2Tform_np(kpt_src, kpt_dst):
+    sum_dist1 = np.sum(np.linalg.norm(kpt_src - kpt_src[0], axis=1))
+    sum_dist2 = np.sum(np.linalg.norm(kpt_dst - kpt_dst[0], axis=1))
+    A = kpt_src * sum_dist2 / sum_dist1
+    B = kpt_dst
+    mu_A = A.mean(axis=0)
+    mu_B = B.mean(axis=0)
+    AA = A - mu_A
+    BB = B - mu_B
+    H = AA.T.dot(BB)
+    U, S, Vt = np.linalg.svd(H)
+    R = Vt.T.dot(U.T)
+    # if np.linalg.det(R) < 0:
+    #     print('singular R')
+    #     Vt[2, :] *= -1
+    #     R = Vt.T.dot(U.T)
+    t = mu_B - mu_A.dot(R.T)
+    return R * sum_dist2 / sum_dist1, t
 
 
 class Flatten(nn.Module):
