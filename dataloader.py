@@ -329,8 +329,42 @@ class DataGenerator(Dataset):
                 print('\n too large offset', abs(offset).max())
             pos = self.toTensor(pos)
             offset = self.toTensor(offset)
-
             return image, pos, offset
+
+        elif self.mode == 'visible':
+
+            image = (self.all_image_data[index].getImage() / 255.).astype(np.float32)
+            pos = self.all_image_data[index].getPosmap().astype(np.float32)
+            offset = self.all_image_data[index].getOffsetPosmap().astype(np.float32)
+            attention_mask = self.all_image_data[index].getAttentionMask().astype(np.float32)
+
+            if self.is_aug:
+                # if np.random.rand() > 0.5:
+                #     rot_angle = np.random.randint(-90, 90)
+                #     rot_angle = rot_angle / 180. * np.pi
+                #     image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
+                # image, pos = augmentation.prnAugment_torch(image, pos, is_rotate=False)
+                image, pos, attention_mask = augmentation.attentionAugment_torch(image, pos, attention_mask)
+                for i in range(3):
+                    image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
+                image = self.toTensor(image)
+            else:
+                for i in range(3):
+                    image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
+                image = self.toTensor(image)
+
+            pos = pos / 280.
+            offset = offset / 6.
+            if abs(offset).max() > 1:
+                print('\n too large offset', abs(offset).max())
+            pos = self.toTensor(pos)
+            offset = self.toTensor(offset)
+            attention_mask = Image.fromarray(attention_mask)
+            attention_mask = attention_mask.resize((32, 32), Image.BILINEAR)
+            attention_mask = np.array(attention_mask)
+            attention_mask = self.toTensor(attention_mask)
+            return image, pos, offset,attention_mask
+
         else:
             return None
 

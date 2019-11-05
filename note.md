@@ -61,3 +61,7 @@
     11.3 23:00 attentionbatch16/48   10:35 siam
     
  
+    11.5
+    晚上三组 attention batch48 l2=0.0001 lossrate=0.1
+             完全体  visible
+             attention batch48 l2=0.0001 lossrate=0.5

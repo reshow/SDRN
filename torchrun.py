@@ -66,7 +66,7 @@ class NetworkManager:
                           'QuaternionOffsetPRN': [3, self.net.buildQuaternionOffsetPRN, 'quaternionoffset', 4, 4],
                           'SiamPRN': [4, self.net.buildSiamPRN, 'siam', 3, 2],
                           'MeanOffsetPRN': [3, self.net.buildMeanOffsetPRN, 'meanoffset', 4, 4],
-                          'VisiblePRN': [4, self.net.buildVisiblePRN, 'siam', 3, 2]}
+                          'VisiblePRN': [5, self.net.buildVisiblePRN, 'visible', 4, 3]}
         self.mode = self.mode_dict['InitPRN']
 
     def buildModel(self, args):
@@ -137,7 +137,7 @@ class NetworkManager:
         # for name, param in model.named_parameters():
         #     if 'weight' in name:
         #         l2_weight_loss += torch.norm(param, 2)
-        train_data_loader = getDataLoader(self.train_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
+        train_data_loader = getDataLoader(self.train_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=True,
                                           is_pre_read=self.is_pre_read, num_worker=self.num_worker)
         val_data_loader = getDataLoader(self.val_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
                                         is_pre_read=True, num_worker=0)

@@ -97,9 +97,9 @@ def SmoothLoss():
             self.face_mask.requires_grad = False
 
         def forward(self, y_pred):
-            diff = F.conv2d(y_pred, self.kernel, padding=1, groups=3)
+            foreface=y_pred
+            diff = F.conv2d(foreface, self.kernel,padding=1, groups=3)
             dist = torch.sqrt(torch.sum(diff ** 2, 1))
-            dist = dist * (self.face_mask * face_mask_mean_fix_rate)
             loss = torch.mean(dist)
             return loss * self.rate
 
@@ -114,6 +114,19 @@ def MaskLoss():
 
         def forward(self, y_true, y_pred):
             return F.binary_cross_entropy(y_pred, y_true) * self.rate
+
+    return TemplateLoss
+
+
+def KptLoss():
+    class TemplateLoss(nn.Module):
+        def __init__(self, rate=1.0):
+            super(TemplateLoss, self).__init__()
+            self.rate = rate
+
+        def forward(self, y_true, y_pred):
+            dist = torch.mean(torch.sqrt(torch.sum((y_true[:, :, uv_kpt[:, 0], uv_kpt[:, 1]] - y_pred[:, :, uv_kpt[:, 0], uv_kpt[:, 1]]) ** 2, 1)))
+            return dist * self.rate
 
     return TemplateLoss
 
@@ -137,6 +150,10 @@ def getLossFunction(loss_func_name='SquareError'):
         return ParamLoss('rmse')
     elif loss_func_name == 'bce' or loss_func_name == 'BinaryCrossEntropy':
         return MaskLoss()
+    elif loss_func_name == 'smooth':
+        return SmoothLoss()
+    elif loss_func_name == 'kpt':
+        return KptLoss()
     else:
         print('unknown loss:', loss_func_name)
 
