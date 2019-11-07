@@ -9,6 +9,7 @@
 *.tlog
 .idea
 PRNetReproduce/face3ddir/examples/Data/*
+data
 *.pyc
 *.gif
 *.png

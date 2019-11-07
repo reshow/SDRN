@@ -171,7 +171,7 @@ class NetworkManager:
 
         for epoch in range(self.start_epoch, self.epoch):
             scheduler.step()
-            print('Epoch: %d' % (epoch+1))
+            print('Epoch: %d' % (epoch + 1))
             model.train()
 
             sum_loss = 0.0
@@ -187,6 +187,7 @@ class NetworkManager:
                 st_idx = [block_id * self.num_block_per_part + task_per_worker * i for i in range(self.num_thread)]
                 ed_idx = [min(NUM_BLOCKS, block_id * self.num_block_per_part + task_per_worker * (i + 1)) for i in range(self.num_thread)]
                 jobs = []
+
                 self.train_data = []
                 for i in range(self.num_thread):
                     idx = np.array(data_block_names[st_idx[i]:ed_idx[i]])
@@ -221,7 +222,7 @@ class NetworkManager:
                     optimizer.step()
                     sum_loss += loss.item()
                     print('\r', end='')
-                    print('[epoch:%d, block:%d/%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch+1, block_id, NUM_BLOCKS // self.num_block_per_part, i,
+                    print('[epoch:%d, block:%d/%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch + 1, block_id, NUM_BLOCKS // self.num_block_per_part, i,
                                                                                          total_itr_num,
                                                                                          int(time.time() - t_start), sum_loss / (num_fed_batch + 1)), end='')
                     for j in range(num_output):
@@ -274,7 +275,6 @@ class NetworkManager:
             for j in range(self.mode[3]):
                 writer.add_scalar('train/metrics%d' % j, sum_metric_loss[j] / len(train_data_loader), epoch + 1)
                 writer.add_scalar('val/metrics%d' % j, val_sum_metric_loss[j] / len(val_data_loader), epoch + 1)
-
 
     def test(self, error_func_list=None, is_visualize=False):
         total_task = len(self.test_data)

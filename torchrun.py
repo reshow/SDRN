@@ -314,6 +314,9 @@ class NetworkManager:
                         init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
                         show([gt_y, tex, init_image], mode='uvmap')
                 mean_errors = np.mean(total_error_list, axis=0)
+                for er in mean_errors:
+                    print('%.5f' % er, end=' ')
+                print('')
             for i in range(len(error_func_list)):
                 print(error_func_list[i], mean_errors[i])
 

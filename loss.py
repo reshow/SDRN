@@ -97,9 +97,10 @@ def SmoothLoss():
             self.face_mask.requires_grad = False
 
         def forward(self, y_pred):
-            foreface=y_pred
-            diff = F.conv2d(foreface, self.kernel,padding=1, groups=3)
-            dist = torch.sqrt(torch.sum(diff ** 2, 1))
+            foreface = y_pred * self.face_mask
+            diff = F.conv2d(foreface, self.kernel, padding=1, groups=3)
+            # dist = torch.sqrt(torch.sum(diff ** 2, 1))
+            dist = torch.norm(diff, dim=1)
             loss = torch.mean(dist)
             return loss * self.rate
 
@@ -159,10 +160,10 @@ def getLossFunction(loss_func_name='SquareError'):
 
 
 def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=False, is_gt_landmark=False, is_weighted_landmark=False):
-    def templateError(y_true, y_pred, bbox=None, landmarks=None):
+    def templateError(y_gt, y_fit, bbox=None, landmarks=None):
         assert (not (is_foreface and is_landmark))
-        y_true = y_true.copy()
-        y_pred = y_pred.copy()
+        y_true = y_gt.copy()
+        y_pred = y_fit.copy()
         y_true[:, :, 2] = y_true[:, :, 2] * face_mask_np
         y_pred[:, :, 2] = y_pred[:, :, 2] * face_mask_np
         y_true_mean = np.mean(y_true[:, :, 2]) * face_mask_mean_fix_rate
@@ -188,7 +189,7 @@ def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=Fals
             # the gt landmark is not the same as the landmarks get from mesh using index
             if is_gt_landmark:
                 gt = landmarks.copy()
-                gt[:, 2] = gt[:, 2] - y_true_mean
+                gt[:, 2] = gt[:, 2] - gt[:, 2].mean()
 
                 if is_weighted_landmark:
                     pred = getWeightedKpt(y_pred)
@@ -202,6 +203,8 @@ def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=Fals
             else:
                 gt = y_true[uv_kpt[:, 0], uv_kpt[:, 1]]
                 pred = y_pred[uv_kpt[:, 0], uv_kpt[:, 1]]
+                gt[:, 2] = gt[:, 2] - gt[:, 2].mean()
+                pred[:, 2] = pred[:, 2] - pred[:, 2].mean()
                 diff = np.square(gt - pred)
                 if is_2d:
                     dist = np.sqrt(np.sum(diff[:, 0:2], axis=-1))
@@ -219,7 +222,14 @@ def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=Fals
 
         if is_normalized:
             # bbox_size = np.sqrt(np.sum(np.square(bbox[0, :] - bbox[1, :])))
-            bbox_size = np.sqrt((bbox[0, 0] - bbox[1, 0]) * (bbox[0, 1] - bbox[1, 1]))
+            if is_landmark:
+                bbox_size = np.sqrt((bbox[0, 0] - bbox[1, 0]) * (bbox[0, 1] - bbox[1, 1]))
+            else:
+                face_vertices = y_gt[face_mask_np > 0]
+                minx, maxx = np.min(face_vertices[:, 0]), np.max(face_vertices[:, 0])
+                miny, maxy = np.min(face_vertices[:, 1]), np.max(face_vertices[:, 1])
+                llength = np.sqrt((maxx - minx) * (maxy - miny))
+                bbox_size = llength
         else:
             bbox_size = 1.
         loss = np.mean(dist / bbox_size)
@@ -228,46 +238,108 @@ def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=Fals
     return templateError
 
 
-def ICPError(is_2d=False, is_normalized=True, is_foreface=True):
+def cp(kpt_src, kpt_dst):
+    A = kpt_src
+    B = kpt_dst
+    mu_A = A.mean(axis=0)
+    mu_B = B.mean(axis=0)
+    AA = A - mu_A
+    BB = B - mu_B
+    H = AA.T.dot(BB)
+    U, S, Vt = np.linalg.svd(H)
+    R = Vt.T.dot(U.T)
+    # if np.linalg.det(R) < 0:
+    #     print('singular R')
+    #     Vt[2, :] *= -1
+    #     R = Vt.T.dot(U.T)
+    t = mu_B - mu_A.dot(R.T)
+    tform = np.zeros((4, 4))
+    tform[0:3, 0:3] = R
+    tform[0:3, 3] = t
+    tform[3, 3] = 1
+    return tform
+
+
+import numba
+
+
+@numba.njit
+def findNearestNB(src, dst):
+    n = len(src)
+    m = len(dst)
+    out = np.zeros((n, 3))
+    dist = np.zeros(n)
+    for i in range(n):
+        dist[i] = np.linalg.norm(src[i])
+    for i in range(n):
+        for j in range(m):
+            d = np.linalg.norm(dst[j] - src[i])
+            if d < dist[i]:
+                dist[i] = d
+                out[i] = dst[j]
+    return np.mean(dist)
+
+
+from sklearn.neighbors import NearestNeighbors
+
+neigh = NearestNeighbors(n_neighbors=1)
+
+
+def findNearest(src, dst, is_return_dist=False):
+    neigh.fit(dst)
+    distances, indices = neigh.kneighbors(src, return_distance=True)
+    n = len(src)
+    indices = indices.flatten()
+    if is_return_dist:
+        dist = np.zeros(n)
+        for i in range(n):
+            dist[i] = np.linalg.norm(src[i] - dst[indices[i]])
+        return indices, dist
+    else:
+        return indices
+
+
+def ICPError(is_interocular=True):
     def templateError(y_true, y_pred, bbox=None, landmarks=None):
         y_true = y_true.copy()
         y_pred = y_pred.copy()
 
-        y_true_vertices = []
-        y_pred_vertices = []
+        y_pred_vertices = y_pred[face_mask_np > 0]
+        y_true_vertices = y_true[face_mask_np > 0]
+        # Tform, mean_dist, break_itr = icp(y_pred_vertices[0::4], y_true_vertices[0::4], max_iterations=50)
 
-        for i in range(256):
-            for j in range(256):
-                if face_mask_np[i, j] > 0:
-                    y_true_vertices.append(y_true[i, j])
-                    y_pred_vertices.append(y_pred[i, j])
-        y_pred_vertices = np.array(y_pred_vertices)
-        y_true_vertices = np.array(y_true_vertices)
-        Tform, mean_dist, break_itr = icp(y_pred_vertices, y_true_vertices, max_iterations=30)
+        if is_interocular:
+            Tform = cp(y_pred_vertices, y_true_vertices)
+            # Tform, mean_dist, break_itr = icp(y_pred_vertices[0::], y_true_vertices[0::], max_iterations=5, init_pose=Tform)
 
-        # R = Tform[0:3, 0:3]
-        # T = Tform[0:3, 3]
-        #
-        # y_pred = y_pred.dot(R.T)
-        # y_pred = y_pred + T
-        #
-        # diff = np.square(y_true - y_pred)
-        # if is_2d:
-        #     dist = np.sqrt(np.sum(diff[:, :, 0:2], axis=-1))
-        # else:
-        #     # 3d
-        #     dist = np.sqrt(np.sum(diff, axis=-1))
-        # if is_foreface:
-        #     dist = dist * face_mask_np * face_mask_mean_fix_rate
+            y_fit_vertices = y_pred_vertices.dot(Tform[0:3, 0:3].T) + Tform[0:3, 3]
+            #
+            dist = np.linalg.norm(y_fit_vertices - y_true_vertices, axis=1)
+            # dist = mean_dist
 
-        if is_normalized:
-            # bbox_size = np.sqrt(np.sum(np.square(bbox[0, :] - bbox[1, :])))
-            # bbox_size = np.sqrt((bbox[0, 0] - bbox[1, 0]) * (bbox[0, 1] - bbox[1, 1]))
+            # ind = findNearest(y_true_vertices, y_fit_vertices)
+            # dist=np.linalg.norm(y_true_vertices-y_fit_vertices[ind],axis=-1)
+            # map_pred_vertices = y_pred_vertices[ind[:]]
+            # dist = np.linalg.norm(map_pred_vertices- y_true_vertices,axis=-1)
+            # dist=mean_dist
+
             outer_interocular_dist = y_true[uv_kpt[36, 0], uv_kpt[36, 1]] - y_true[uv_kpt[45, 0], uv_kpt[45, 1]]
-            bbox_size = np.sqrt(outer_interocular_dist[0:2].dot(outer_interocular_dist[0:2]))
+            bbox_size = np.linalg.norm(outer_interocular_dist[0:3])
+
+            loss = np.mean(dist / bbox_size)
         else:
-            bbox_size = 1.
-        loss = np.mean(mean_dist / bbox_size)
+            Tform = cp(y_pred_vertices, y_true_vertices)
+
+            # # it is 2D interocular dist in PRN while 2DASl using 2D bboxsize
+            # fit_pred=y_pred_vertices
+            # fit_pred[:,2]=fit_pred[:,2]-fit_pred[:,2].mean()+y_true_vertices[:,2].mean()
+            y_fit_vertices = y_pred_vertices.dot(Tform[0:3, 0:3].T) + Tform[0:3, 3]
+            dist = np.sqrt(np.sum((y_fit_vertices - y_true_vertices) ** 2, axis=-1))
+            minx, maxx = np.min(y_true[:, :, 0]), np.max(y_true[:, :, 0])
+            miny, maxy = np.min(y_true[:, :, 1]), np.max(y_true[:, :, 1])
+            llength = np.sqrt((maxx - minx) * (maxy - miny))
+            bbox_size = llength
+            loss = np.mean(dist / bbox_size)
         return loss
 
     return templateError
@@ -295,7 +367,9 @@ def getErrorFunction(error_func_name='NME', rate=1.0):
         return PRNError(is_2d=False, is_normalized=True, is_foreface=False, is_landmark=True,
                         is_gt_landmark=True, is_weighted_landmark=True)
     elif error_func_name == 'icp':
-        return ICPError(is_normalized=True)
+        return ICPError(is_interocular=True)
+    elif error_func_name == 'icp2':
+        return ICPError(is_interocular=False)
 
     else:
         print('unknown error:', error_func_name)

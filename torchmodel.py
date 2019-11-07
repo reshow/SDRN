@@ -74,10 +74,10 @@ class InitLoss(nn.Module):
 
     def forward(self, posmap, gt_posmap):
         loss_posmap = self.criterion(gt_posmap, posmap)
-        loss_smooth=self.smooth(posmap)
-        total_loss=loss_posmap+loss_smooth
+        loss_smooth = self.smooth(posmap)
+        total_loss = loss_posmap + loss_smooth
         metrics_posmap = self.metrics(gt_posmap, posmap)
-        print(loss_smooth)
+        # print(loss_smooth)
         return total_loss, metrics_posmap
 
 
@@ -751,7 +751,7 @@ class VisiblePRN(nn.Module):
         self.rebuilder = VisibleRebuildModule()
         self.loss = VisibleLoss()
 
-    def forward(self, inpt, gt_posmap, gt_offset,gt_attention, is_rebuild=True):
+    def forward(self, inpt, gt_posmap, gt_offset, gt_attention, is_rebuild=True):
         x = self.layer0(inpt)
         x = self.block1(x)
         x = self.block2(x)
@@ -778,8 +778,9 @@ class VisiblePRN(nn.Module):
             else:
                 posmap = self.rebuilder(offset, kpt_posmap)
 
-        loss, metrics_posmap, metrics_offset, metrics_kpt,metrics_attention = self.loss(posmap, offset, kpt_posmap,attention, gt_posmap, gt_offset,gt_attention)
-        return loss, metrics_posmap, metrics_offset, metrics_kpt,metrics_attention, posmap
+        loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention = self.loss(posmap, offset, kpt_posmap, attention, gt_posmap, gt_offset,
+                                                                                         gt_attention)
+        return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, posmap
 
 
 class TorchNet:
