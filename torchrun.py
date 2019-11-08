@@ -328,6 +328,118 @@ class NetworkManager:
             fout.write(sep.join(se_path_list))
             fout.close()
 
+    def testAFLW(self, is_visualize=False):
+        from data import matrix2Angle
+        total_task = len(self.test_data)
+        print('total img:', total_task)
+        error_func_list = ['landmark2d']
+        model = self.net.model
+        total_error_list = []
+        num_output = self.mode[3]
+        num_input = self.mode[4]
+        data_generator = DataGenerator(all_image_data=self.test_data, mode=self.mode[2], is_aug=False, is_pre_read=self.is_pre_read)
+
+        pose_list = np.load('data/AFLW2000-3D.pose.npy')
+        angle_arg = [[], [], []]  # [0,30]  [30,60]  [60,90]
+
+        with torch.no_grad():
+            model.eval()
+            for i in range(len(self.test_data)):
+                data = data_generator.__getitem__(i)
+                x = data[0]
+                x = x.to(self.net.device).float()
+                y = [data[j] for j in range(1, 1 + num_input)]
+                for j in range(num_input):
+                    y[j] = y[j].to(x.device).float()
+                    y[j] = torch.unsqueeze(y[j], 0)
+                x = torch.unsqueeze(x, 0)
+                outputs = model(x, *y)
+
+                p = outputs[-1]
+                x = x.squeeze().cpu().numpy().transpose(1, 2, 0)
+                p = p.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+                b = sio.loadmat(self.test_data[i].bbox_info_path)
+                # R = b['TformOffset'][0:3, 0:3].T
+                # # yaw_angle = np.arctan2(-R[2, 0], np.sqrt(R[0, 0] ** 2 + R[1, 0] ** 2))
+                # # yaw_angle = np.abs(yaw_angle / np.pi * 180)
+
+                yaw_angle=np.abs(pose_list[i])
+
+                if yaw_angle <= 30:
+                    angle_arg[0].append(i)
+
+                elif yaw_angle <= 60:
+                    angle_arg[1].append(i)
+
+                else:
+                    angle_arg[2].append(i)
+
+
+
+                gt_y = y[0]
+                gt_y = gt_y.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+
+                temp_errors = []
+                for error_func_name in error_func_list:
+                    error_func = getErrorFunction(error_func_name)
+                    error = error_func(gt_y, p, b['Bbox'], b['Kpt'])
+                    temp_errors.append(error)
+                total_error_list.append(temp_errors)
+                print(self.test_data[i].init_image_path, end='  ')
+                for er in temp_errors:
+                    print('%.5f' % er, end=' ')
+                print('')
+                if is_visualize:
+
+                    if temp_errors[0] > 0.06:
+                        init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                        diff = np.square(gt_y - p) * masks.face_mask_np3d
+                        dist2d = np.sqrt(np.sum(diff[:, :, 0:2], axis=-1))
+                        dist2d[0, 0] = 30.0
+                        dist3d = np.sqrt(np.sum(diff[:, :, 0:3], axis=-1))
+                        dist3d[0, 0] = 30.0
+                        dist3 = np.sqrt(diff[:, :, 2])
+                        dist3[0, 0] = 30.0
+                        visibility = np.load(self.test_data[i].attention_mask_path.replace('attention', 'visibility')).astype(np.float32)
+
+                        plt.subplot(2, 3, 1)
+                        plt.imshow(init_image)
+                        plt.subplot(2, 3, 2)
+                        plt.imshow(dist2d)
+                        plt.subplot(2, 3, 3)
+                        plt.imshow(dist3d)
+                        plt.subplot(2, 3, 4)
+                        plt.imshow(dist3)
+                        plt.subplot(2, 3, 5)
+                        plt.imshow(visibility)
+                        plt.show()
+
+                        tex = np.load(self.test_data[i].texture_path.replace('zeroz2', 'full')).astype(np.float32)
+                        init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                        show([p, tex, init_image], mode='uvmap')
+                        init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                        show([gt_y, tex, init_image], mode='uvmap')
+                mean_errors = np.mean(total_error_list, axis=0)
+                for er in mean_errors:
+                    print('%.5f' % er, end=' ')
+                print('')
+            for i in range(len(error_func_list)):
+                print(error_func_list[i], mean_errors[i])
+
+            total_error_list = np.array(total_error_list).squeeze()
+            error_list_30 = total_error_list[angle_arg[0]]
+            error_list_60 = total_error_list[angle_arg[1]]
+            error_list_90 = total_error_list[angle_arg[2]]
+            print('length', len(angle_arg[2]))
+            np.random.seed(0)
+            np.random.shuffle(error_list_30)
+            np.random.shuffle(error_list_60)
+            np.random.shuffle(error_list_90)
+            item_num = 232
+            balance_error_list = np.concatenate([error_list_30[:item_num], error_list_60[:item_num], error_list_90[:item_num]])
+            print(np.mean(error_list_30[:item_num]), np.mean(error_list_60[:item_num]), np.mean(error_list_90[:item_num]), np.mean(balance_error_list),
+                  np.std(balance_error_list, ddof=1))
+
 
 if __name__ == '__main__':
     random.seed(0)
@@ -345,6 +457,7 @@ if __name__ == '__main__':
     parser.add_argument('--uvKptPath', default='uv-data/uv_kpt_ind.txt', type=str, help='')
     parser.add_argument('-train', '--isTrain', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-test', '--isTest', default=False, type=ast.literal_eval, help='')
+    parser.add_argument('-aflw', '--isTestAFLW', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-testsingle', '--isTestSingle', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-visualize', '--isVisualize', default=False, type=ast.literal_eval, help='')
     parser.add_argument('--errorFunction', default='nme2d', nargs='+', type=str)
@@ -389,5 +502,12 @@ if __name__ == '__main__':
         if run_args.loadModelPath is not None:
             net_manager.net.loadWeights(run_args.loadModelPath)
             net_manager.test(error_func_list=run_args.errorFunction, is_visualize=run_args.isVisualize)
+
+    if run_args.isTestAFLW:
+        for dir in run_args.testDataDir:
+            net_manager.addImageData(dir, 'test')
+        if run_args.loadModelPath is not None:
+            net_manager.net.loadWeights(run_args.loadModelPath)
+            net_manager.testAFLW(is_visualize=run_args.isVisualize)
 
     writer.close()

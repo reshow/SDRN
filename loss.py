@@ -15,6 +15,7 @@ weight_mask_np = weight_mask_np / 16
 weight_mask = torch.from_numpy(weight_mask_np)
 face_mask = torch.from_numpy(face_mask_np)
 face_mask_3D = toTensor(np.repeat(np.reshape(face_mask_np, (256, 256, 1)), 3, -1))
+foreface_ind = np.array(np.where(face_mask_np > 0)).T
 if torch.cuda.is_available():
     weight_mask = weight_mask.cuda().float()
     face_mask = face_mask.cuda().float()
@@ -33,25 +34,25 @@ def UVLoss(is_foreface=False, is_weighted=False, is_nme=False):
 
         def forward(self, y_true, y_pred):
             if is_nme:
-                y_true = y_true * self.face_mask
-                y_pred = y_pred * self.face_mask
-                y_true[:, 2, :, :] = y_true[:, 2, :, :] - torch.mean(y_true[:, 2, :, :]) * face_mask_mean_fix_rate
-                y_pred[:, 2, :, :] = y_pred[:, 2, :, :] - torch.mean(y_pred[:, 2, :, :]) * face_mask_mean_fix_rate
+                pred = y_pred[:, :, foreface_ind[:, 0], foreface_ind[:, 1]]
+                gt = y_true[:, :, foreface_ind[:, 0], foreface_ind[:, 1]]
+                for i in range(y_true.shape[0]):
+                    pred[i, 2] = pred[i, 2] - torch.mean(pred[i, 2])
+                    gt[i, 2] = gt[i, 2] - torch.mean(gt[i, 2])
+                dist = torch.mean(torch.norm(pred - gt, dim=1),dim=1)
+                left = torch.min(gt[:, 0, :], dim=1)[0]
+                right = torch.max(gt[:, 0, :], dim=1)[0]
+                top = torch.min(gt[:, 1, :], dim=1)[0]
+                bottom = torch.max(gt[:, 1, :], dim=1)[0]
+                bbox_size = torch.sqrt((right - left) * (bottom - top))
+                dist = dist / bbox_size
+                return torch.mean(dist) * self.rate
+
             dist = torch.sqrt(torch.sum((y_true - y_pred) ** 2, 1))
             if is_weighted:
                 dist = dist * self.weight_mask
             if is_foreface:
                 dist = dist * (self.face_mask * face_mask_mean_fix_rate)
-            if is_nme:
-                yt = y_true.permute(0, 2, 3, 1)
-                kpt = yt[:, uv_kpt[:, 0], uv_kpt[:, 1]]
-                left = torch.min(kpt[:, :, 0], dim=1)[0]
-                right = torch.max(kpt[:, :, 0], dim=1)[0]
-                top = torch.min(kpt[:, :, 1], dim=1)[0]
-                bottom = torch.max(kpt[:, :, 1], dim=1)[0]
-                bbox_size = torch.sqrt((right - left) * (bottom - top))
-                # dist = torch.mean(dist, dim=(1, 2))
-                dist = dist / bbox_size
 
             loss = torch.mean(dist)
             return loss * self.rate

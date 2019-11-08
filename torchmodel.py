@@ -69,7 +69,7 @@ class InitLoss(nn.Module):
     def __init__(self):
         super(InitLoss, self).__init__()
         self.criterion = getLossFunction('fwrse')()
-        self.metrics = getLossFunction('frse')()
+        self.metrics = getLossFunction('nme')()
         self.smooth = getLossFunction('smooth')(0.1)
 
     def forward(self, posmap, gt_posmap):
@@ -670,7 +670,7 @@ class VisibleLoss(nn.Module):
         self.criterion1 = getLossFunction('fwrse')(0.5)  # offset
         self.criterion2 = getLossFunction('kpt')(1)  # kpt
         self.criterion3 = getLossFunction('bce')(0.1)  # attention
-        self.metrics0 = getLossFunction('frse')(1.)
+        self.metrics0 = getLossFunction('nme')(1.)
         self.metrics1 = getLossFunction('frse')(1.)
         self.metrics2 = getLossFunction('kpt')(1.)
         self.metrics3 = getLossFunction('mae')(1.)

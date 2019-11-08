@@ -360,6 +360,7 @@ def kpt2Tform_np(kpt_src, kpt_dst):
     t = mu_B - mu_A.dot(R.T)
     return R * sum_dist2 / sum_dist1, t
 
+
 def kpt2Tform(kpt_src, kpt_dst):
     sum_dist1 = torch.sum(torch.norm(kpt_src - kpt_src[0], dim=1))
     sum_dist2 = torch.sum(torch.norm(kpt_dst - kpt_dst[0], dim=1))
@@ -372,12 +373,22 @@ def kpt2Tform(kpt_src, kpt_dst):
     H = AA.permute(1, 0).mm(BB)
     U, S, V = torch.svd(H)
     R = V.mm(U.permute(1, 0))
-    # if np.linalg.det(R) < 0:
+    # if torch.det(R) < 0:
     #     print('singular R')
-    #     Vt[2, :] *= -1
-    #     R = Vt.T.dot(U.T)
+    #     V[1,:] *= -1
+    #     R = V.mm(U.permute(1, 0))
     t = torch.mean(B - A.mm(R.permute(1, 0)), dim=0)
     return R * sum_dist2 / sum_dist1, t
+
+
+def kpt2Tform_notorch(kpt_src, kpt_dst):
+    kpt_src_np = kpt_src.detach().cpu().numpy()
+    kpt_dst_np = kpt_dst.detach().cpu().numpy()
+    tform = transform.estimate_transform('similarity', kpt_src_np, kpt_dst_np)
+    tform = tform.params
+    tform = torch.from_numpy(tform).to(kpt_src.device).float()
+    return tform[0:3, 0:3], tform[0:3, 3]
+
 
 class VisibleRebuildModule(nn.Module):
     def __init__(self):
@@ -399,6 +410,7 @@ class VisibleRebuildModule(nn.Module):
         kpt_dst = kptmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
         kpt_src = offsetmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
         offsetmap = offsetmap.reshape((Offset.shape[0], 65536, 3))
+
         for i in range(Offset.shape[0]):
             R, T = kpt2Tform(kpt_src[i], kpt_dst[i])
             outpos[i] = offsetmap[i].mm(R.permute(1, 0)) + T
@@ -406,9 +418,6 @@ class VisibleRebuildModule(nn.Module):
         outpos = outpos.reshape((Offset.shape[0], 256, 256, 3))
         outpos = outpos.permute(0, 3, 1, 2)
         return outpos
-
-
-
 
 
 class Flatten(nn.Module):
