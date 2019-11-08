@@ -39,7 +39,7 @@ def UVLoss(is_foreface=False, is_weighted=False, is_nme=False):
                 for i in range(y_true.shape[0]):
                     pred[i, 2] = pred[i, 2] - torch.mean(pred[i, 2])
                     gt[i, 2] = gt[i, 2] - torch.mean(gt[i, 2])
-                dist = torch.mean(torch.norm(pred - gt, dim=1),dim=1)
+                dist = torch.mean(torch.norm(pred - gt, dim=1), dim=1)
                 left = torch.min(gt[:, 0, :], dim=1)[0]
                 right = torch.max(gt[:, 0, :], dim=1)[0]
                 top = torch.min(gt[:, 1, :], dim=1)[0]
@@ -120,14 +120,28 @@ def MaskLoss():
     return TemplateLoss
 
 
-def KptLoss():
+def KptLoss(is_centralize=False):
     class TemplateLoss(nn.Module):
         def __init__(self, rate=1.0):
             super(TemplateLoss, self).__init__()
             self.rate = rate
 
         def forward(self, y_true, y_pred):
-            dist = torch.mean(torch.sqrt(torch.sum((y_true[:, :, uv_kpt[:, 0], uv_kpt[:, 1]] - y_pred[:, :, uv_kpt[:, 0], uv_kpt[:, 1]]) ** 2, 1)))
+            if is_centralize:
+                gt = y_true[:, :, uv_kpt[:, 0], uv_kpt[:, 1]]
+                pred = y_pred[:, :, uv_kpt[:, 0], uv_kpt[:, 1]]
+                for i in range(y_true.shape[0]):
+                    pred[i, 2] = pred[i, 2] - torch.mean(pred[i, 2])
+                    gt[i, 2] = gt[i, 2] - torch.mean(gt[i, 2])
+                dist = torch.mean(torch.norm(pred - gt, dim=1), dim=1)
+                left = torch.min(gt[:, 0, :], dim=1)[0]
+                right = torch.max(gt[:, 0, :], dim=1)[0]
+                top = torch.min(gt[:, 1, :], dim=1)[0]
+                bottom = torch.max(gt[:, 1, :], dim=1)[0]
+                bbox_size = torch.sqrt((right - left) * (bottom - top))
+                dist = dist / bbox_size
+            else:
+                dist = torch.mean(torch.sqrt(torch.sum((y_true[:, :, uv_kpt[:, 0], uv_kpt[:, 1]] - y_pred[:, :, uv_kpt[:, 0], uv_kpt[:, 1]]) ** 2, 1)))
             return dist * self.rate
 
     return TemplateLoss
@@ -156,6 +170,8 @@ def getLossFunction(loss_func_name='SquareError'):
         return SmoothLoss()
     elif loss_func_name == 'kpt':
         return KptLoss()
+    elif loss_func_name == 'kptc':
+        return KptLoss(is_centralize=True)
     else:
         print('unknown loss:', loss_func_name)
 

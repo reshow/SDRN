@@ -672,7 +672,7 @@ class VisibleLoss(nn.Module):
         self.criterion3 = getLossFunction('bce')(0.1)  # attention
         self.metrics0 = getLossFunction('nme')(1.)
         self.metrics1 = getLossFunction('frse')(1.)
-        self.metrics2 = getLossFunction('kpt')(1.)
+        self.metrics2 = getLossFunction('kptc')(1.)
         self.metrics3 = getLossFunction('mae')(1.)
 
     def forward(self, posmap, offset, kpt_posmap, mask,
