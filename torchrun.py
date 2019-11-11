@@ -66,7 +66,8 @@ class NetworkManager:
                           'QuaternionOffsetPRN': [3, self.net.buildQuaternionOffsetPRN, 'quaternionoffset', 4, 4],
                           'SiamPRN': [4, self.net.buildSiamPRN, 'siam', 3, 2],
                           'MeanOffsetPRN': [3, self.net.buildMeanOffsetPRN, 'meanoffset', 4, 4],
-                          'VisiblePRN': [5, self.net.buildVisiblePRN, 'visible', 4, 3]}
+                          'VisiblePRN': [5, self.net.buildVisiblePRN, 'visible', 4, 3],
+                          'SDN': [5, self.net.buildSDN, 'visible', 4, 3]}
         self.mode = self.mode_dict['InitPRN']
 
     def buildModel(self, args):
@@ -332,14 +333,14 @@ class NetworkManager:
         from data import matrix2Angle
         total_task = len(self.test_data)
         print('total img:', total_task)
-        error_func_list = ['landmark2d']
+        error_func_list = ['landmark2d','nme2d','nme3d']
         model = self.net.model
         total_error_list = []
         num_output = self.mode[3]
         num_input = self.mode[4]
         data_generator = DataGenerator(all_image_data=self.test_data, mode=self.mode[2], is_aug=False, is_pre_read=self.is_pre_read)
 
-        pose_list = np.load('data/AFLW2000-3D.pose.npy')
+        pose_list = np.load('data/AFLW2000-3D-new.pose.npy')
         angle_arg = [[], [], []]  # [0,30]  [30,60]  [60,90]
 
         with torch.no_grad():
@@ -371,7 +372,7 @@ class NetworkManager:
                 elif yaw_angle <= 60:
                     angle_arg[1].append(i)
 
-                else:
+                elif yaw_angle<=90:
                     angle_arg[2].append(i)
 
 
@@ -426,7 +427,7 @@ class NetworkManager:
             for i in range(len(error_func_list)):
                 print(error_func_list[i], mean_errors[i])
 
-            total_error_list = np.array(total_error_list).squeeze()
+            total_error_list = np.array(total_error_list)
             error_list_30 = total_error_list[angle_arg[0]]
             error_list_60 = total_error_list[angle_arg[1]]
             error_list_90 = total_error_list[angle_arg[2]]
@@ -435,10 +436,11 @@ class NetworkManager:
             np.random.shuffle(error_list_30)
             np.random.shuffle(error_list_60)
             np.random.shuffle(error_list_90)
-            item_num = 232
+            item_num = len(angle_arg[2])
             balance_error_list = np.concatenate([error_list_30[:item_num], error_list_60[:item_num], error_list_90[:item_num]])
-            print(np.mean(error_list_30[:item_num]), np.mean(error_list_60[:item_num]), np.mean(error_list_90[:item_num]), np.mean(balance_error_list),
-                  np.std(balance_error_list, ddof=1))
+            print(np.mean(error_list_30[:item_num],axis=0), np.mean(error_list_60[:item_num],axis=0), np.mean(error_list_90[:item_num],axis=0),
+                  np.mean(balance_error_list,axis=0),
+                  np.std(balance_error_list[:,0], ddof=1))
 
 
 if __name__ == '__main__':

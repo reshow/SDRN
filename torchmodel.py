@@ -70,12 +70,12 @@ class InitLoss(nn.Module):
         super(InitLoss, self).__init__()
         self.criterion = getLossFunction('fwrse')()
         self.metrics = getLossFunction('nme')()
-        self.smooth = getLossFunction('smooth')(0.1)
+        # self.smooth = getLossFunction('smooth')(0.1)
 
     def forward(self, posmap, gt_posmap):
         loss_posmap = self.criterion(gt_posmap, posmap)
-        loss_smooth = self.smooth(posmap)
-        total_loss = loss_posmap + loss_smooth
+        # loss_smooth = self.smooth(posmap)
+        total_loss = loss_posmap  # + loss_smooth
         metrics_posmap = self.metrics(gt_posmap, posmap)
         # print(loss_smooth)
         return total_loss, metrics_posmap
@@ -783,6 +783,128 @@ class VisiblePRN(nn.Module):
         return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, posmap
 
 
+class SDNLoss(nn.Module):
+    def __init__(self):
+        super(SDNLoss, self).__init__()
+        self.criterion0 = getLossFunction('fwrse')(0.1)  # final pos
+        self.criterion1 = getLossFunction('fwrse')(0.5)  # offset
+        self.criterion2 = getLossFunction('fwrse')(1)  # kpt
+        self.criterion3 = getLossFunction('bce')(0.1)  # attention
+        self.criterion4 = getLossFunction('smooth')(0.)
+        self.metrics0 = getLossFunction('nme')(1.)
+        self.metrics1 = getLossFunction('frse')(1.)
+        self.metrics2 = getLossFunction('kptc')(1.)
+        self.metrics3 = getLossFunction('mae')(1.)
+
+    def forward(self, posmap, offset, kpt_posmap, mask,
+                gt_posmap, gt_offset, gt_mask):
+        loss_posmap = self.criterion0(gt_posmap, posmap)
+        loss_offset = self.criterion1(gt_offset, offset)
+        loss_kpt = self.criterion2(gt_posmap, kpt_posmap)
+        loss_mask = self.criterion3(gt_mask, mask)
+        loss_smooth = self.criterion4(offset)
+        loss = loss_offset + loss_kpt + loss_posmap + loss_mask + loss_smooth
+
+        metrics_posmap = self.metrics0(gt_posmap, posmap)
+        metrics_offset = self.metrics1(gt_offset, offset)
+        metrics_kpt = self.metrics2(gt_posmap, kpt_posmap)
+        metrics_attention = self.metrics3(gt_mask, mask)
+        return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention
+
+
+class SDN(nn.Module):
+    def __init__(self):
+        super(SDN, self).__init__()
+        self.feature_size = 16
+        feature_size = self.feature_size
+        self.layer0 = Conv2d_BN_AC(in_channels=3, out_channels=feature_size, kernel_size=4, stride=1, padding=1)
+
+        self.block1 = PRNResBlock(in_channels=feature_size, out_channels=feature_size * 2, kernel_size=4, stride=2, with_conv_shortcut=True)  # 128 x 128 x 32
+        self.block2 = PRNResBlock(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1,
+                                  with_conv_shortcut=False)  # 128 x 128 x 32
+        self.block3 = PRNResBlock(in_channels=feature_size * 2, out_channels=feature_size * 4, kernel_size=4, stride=2,
+                                  with_conv_shortcut=True)  # 64 x 64 x 64
+        self.block4 = PRNResBlock(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1,
+                                  with_conv_shortcut=False)  # 64 x 64 x 64
+        self.block5 = PRNResBlock(in_channels=feature_size * 4, out_channels=feature_size * 8, kernel_size=4, stride=2,
+                                  with_conv_shortcut=True)  # 32 x 32 x 128
+        self.block6 = PRNResBlock(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1,
+                                  with_conv_shortcut=False)  # 32 x 32 x 128
+        self.block7 = PRNResBlock(in_channels=feature_size * 8, out_channels=feature_size * 16, kernel_size=4, stride=2,
+                                  with_conv_shortcut=True)  # 16 x 16 x 256
+        self.block8 = PRNResBlock(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1,
+                                  with_conv_shortcut=False)  # 16 x 16 x 256
+        self.block9 = PRNResBlock(in_channels=feature_size * 16, out_channels=feature_size * 32, kernel_size=4, stride=2,
+                                  with_conv_shortcut=True)  # 8 x 8 x 512
+        self.block10 = PRNResBlock(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1,
+                                   with_conv_shortcut=False)  # 8 x 8 x 512
+
+        self.attention_branch = AttentionModel(num_features_in=feature_size * 8)
+        self.decoder = nn.Sequential(
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1),  # 8 x 8 x 512
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 16, kernel_size=4, stride=2),  # 16 x 16 x 256
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 8, kernel_size=4, stride=2),  # 32 x 32 x 128
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 4, kernel_size=4, stride=2),  # 64 x 64 x 64
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 2, kernel_size=4, stride=2),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 1, kernel_size=4, stride=2),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=feature_size * 1, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Tanh()))
+        self.decoder_kpt = nn.Sequential(
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1),  # 8 x 8 x 512
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 16, kernel_size=4, stride=2),  # 16 x 16 x 256
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1),  # 16 x 16 x 256
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1),  # 16 x 16 x 256
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 8, kernel_size=4, stride=2),  # 32 x 32 x 128
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1),  # 32 x 32 x 128
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1),  # 32 x 32 x 128
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 4, kernel_size=4, stride=2),  # 64 x 64 x 64
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1),  # 64 x 64 x 64
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1),  # 64 x 64 x 64
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 2, kernel_size=4, stride=2),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 1, kernel_size=4, stride=2),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=feature_size * 1, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Tanh()))
+        self.rebuilder = VisibleRebuildModule()
+        self.loss = SDNLoss()
+
+    def forward(self, inpt, gt_posmap, gt_offset, gt_attention, is_rebuild=True):
+        x = self.layer0(inpt)
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        x = self.block5(x)
+        x = self.block6(x)
+        attention = self.attention_branch(x)
+        attention_features = torch.stack([x[i] * torch.exp(attention[i]) for i in range(len(x))], dim=0)
+        f = self.block7(attention_features)
+        f = self.block8(f)
+        f = self.block9(f)
+        f = self.block10(f)
+        x_new = f.detach()
+        offset = self.decoder(x_new)
+
+        kpt_posmap = self.decoder_kpt(f)
+
+        if is_rebuild:
+            posmap = self.rebuilder(offset, kpt_posmap)
+        else:
+            if self.training:
+                posmap = gt_posmap.clone()
+            else:
+                posmap = self.rebuilder(offset, kpt_posmap)
+
+        loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention = self.loss(posmap, offset, kpt_posmap, attention, gt_posmap, gt_offset,
+                                                                                         gt_attention)
+        return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, posmap
+
+
 class TorchNet:
 
     def __init__(self,
@@ -892,6 +1014,19 @@ class TorchNet:
 
         self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0001)
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.5)
+
+    def buildSDN(self):
+        self.model = SDN()
+
+        if self.gpu_num > 1:
+            self.model = nn.DataParallel(self.model, device_ids=self.visible_devices)
+        self.model.to(self.device)
+        # model.cuda()
+
+        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
+        scheduler_exp = optim.lr_scheduler.ExponentialLR(self.optimizer, 0.8)
+        scheduler_warmup = GradualWarmupScheduler(self.optimizer, multiplier=8, total_epoch=3, after_scheduler=scheduler_exp)
+        self.scheduler = scheduler_warmup
 
     def loadWeights(self, model_path):
         if self.gpu_num > 1:

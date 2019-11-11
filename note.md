@@ -65,3 +65,23 @@
     晚上三组 attention batch48 l2=0.0001 lossrate=0.1
              完全体  visible
              attention batch48 l2=0.0001 lossrate=0.5
+             
+             
+     visible1 batchsize48 比visible稍微下降0.01基本没问题
+     visible2 finalposerate 0.01 性能下降
+     
+     
+    11.11上午两组SDN
+    (visible2)
+        self.criterion0 = getLossFunction('fwrse')(0.1)  # final pos
+        self.criterion1 = getLossFunction('fwrse')(0.5)  # offset
+        self.criterion2 = getLossFunction('fwrse')(1)  # kpt
+        self.criterion3 = getLossFunction('bce')(0.1)  # attention
+        self.criterion4 = getLossFunction('smooth')(0.)
+        self.metrics0 = getLossFunction('nme')(1.)
+        self.metrics1 = getLossFunction('frse')(1.)
+        self.metrics2 = getLossFunction('kptc')(1.)
+        self.metrics3 = getLossFunction('mae')(1.)
+     
+    (visible1)
+        decay 0.0002
