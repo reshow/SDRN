@@ -333,7 +333,7 @@ class NetworkManager:
         from data import matrix2Angle
         total_task = len(self.test_data)
         print('total img:', total_task)
-        error_func_list = ['landmark2d','nme2d','nme3d']
+        error_func_list = ['landmark2d', 'nme2d', 'nme3d']
         model = self.net.model
         total_error_list = []
         num_output = self.mode[3]
@@ -364,19 +364,13 @@ class NetworkManager:
                 # # yaw_angle = np.arctan2(-R[2, 0], np.sqrt(R[0, 0] ** 2 + R[1, 0] ** 2))
                 # # yaw_angle = np.abs(yaw_angle / np.pi * 180)
 
-                yaw_angle=np.abs(pose_list[i])
-
+                yaw_angle = np.abs(pose_list[i])
                 if yaw_angle <= 30:
                     angle_arg[0].append(i)
-
                 elif yaw_angle <= 60:
                     angle_arg[1].append(i)
-
-                elif yaw_angle<=90:
+                elif yaw_angle <= 90:
                     angle_arg[2].append(i)
-
-
-
                 gt_y = y[0]
                 gt_y = gt_y.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
 
@@ -438,9 +432,46 @@ class NetworkManager:
             np.random.shuffle(error_list_90)
             item_num = len(angle_arg[2])
             balance_error_list = np.concatenate([error_list_30[:item_num], error_list_60[:item_num], error_list_90[:item_num]])
-            print(np.mean(error_list_30[:item_num],axis=0), np.mean(error_list_60[:item_num],axis=0), np.mean(error_list_90[:item_num],axis=0),
-                  np.mean(balance_error_list,axis=0),
-                  np.std(balance_error_list[:,0], ddof=1))
+            print(np.mean(error_list_30[:item_num], axis=0), np.mean(error_list_60[:item_num], axis=0), np.mean(error_list_90[:item_num], axis=0),
+                  np.mean(balance_error_list, axis=0),
+                  np.std(balance_error_list[:, 0], ddof=1))
+
+    def testMICC(self, is_visualize=False):
+
+        error_func_list = ['micc']
+        model = self.net.model
+        total_error_list = []
+        num_output = self.mode[3]
+        num_input = self.mode[4]
+        data_generator = DataGenerator(all_image_data=self.test_data, mode=self.mode[2], is_aug=False, is_pre_read=self.is_pre_read)
+
+        with torch.no_grad():
+            model.eval()
+            for i in range(len(self.test_data)):
+                data = data_generator.__getitem__(i)
+                x = data[0]
+                x = x.to(self.net.device).float()
+                y = [data[j] for j in range(1, 1 + num_input)]
+                for j in range(num_input):
+                    y[j] = y[j].to(x.device).float()
+                    y[j] = torch.unsqueeze(y[j], 0)
+                x = torch.unsqueeze(x, 0)
+                outputs = model(x, *y)
+                p = outputs[-1]
+                x = x.squeeze().cpu().numpy().transpose(1, 2, 0)
+                p = p.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+
+                gt_mesh = np.load(self.test_data[i].cropped_image_path.replace('_cropped.npy', '_mesh.npy'))
+                temp_errors = []
+                for error_func_name in error_func_list:
+                    error_func = getErrorFunction(error_func_name)
+                    error = error_func(gt_mesh, p)
+                    temp_errors.append(error)
+                total_error_list.append(temp_errors)
+                print(self.test_data[i].init_image_path, end='  ')
+                for er in temp_errors:
+                    print('%.5f' % er, end=' ')
+                print('')
 
 
 if __name__ == '__main__':
@@ -460,6 +491,7 @@ if __name__ == '__main__':
     parser.add_argument('-train', '--isTrain', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-test', '--isTest', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-aflw', '--isTestAFLW', default=False, type=ast.literal_eval, help='')
+    parser.add_argument('-micc', '--isTestMICC', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-testsingle', '--isTestSingle', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-visualize', '--isVisualize', default=False, type=ast.literal_eval, help='')
     parser.add_argument('--errorFunction', default='nme2d', nargs='+', type=str)
@@ -511,5 +543,12 @@ if __name__ == '__main__':
         if run_args.loadModelPath is not None:
             net_manager.net.loadWeights(run_args.loadModelPath)
             net_manager.testAFLW(is_visualize=run_args.isVisualize)
+
+    if run_args.isTestMICC:
+        for dir in run_args.testDataDir:
+            net_manager.addImageData(dir, 'test')
+        if run_args.loadModelPath is not None:
+            net_manager.net.loadWeights(run_args.loadModelPath)
+            net_manager.testMICC(is_visualize=run_args.isVisualize)
 
     writer.close()

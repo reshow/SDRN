@@ -153,9 +153,6 @@ def process(file_list, target_dir):
         rendered_num = rendered_num + 10000
 
 
-
-
-
 if __name__ == '__main__':
     input_dir = 'data/back/MICC'
     output_dir = 'data/images/florence'

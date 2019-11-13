@@ -329,6 +329,73 @@ def cp(kpt_src, kpt_dst, is_scale=True):
     return tform
 
 
+def nearest_neighbor(src, dst):
+    '''
+    Find the nearest (Euclidean) neighbor in dst for each point in src
+    Input:
+        src: Nxm array of points
+        dst: Nxm array of points
+    Output:
+        distances: Euclidean distances of the nearest neighbor
+        indices: dst indices of the nearest neighbor
+    '''
+    neigh = NearestNeighbors(n_neighbors=1)
+    neigh.fit(dst)
+    distances, indices = neigh.kneighbors(src, return_distance=True)
+    return distances.ravel(), indices.ravel()
+
+
+def myICP(A, B, init_pose=None, max_iterations=20, tolerance=0.001):
+    '''
+    The Iterative Closest Point method: finds best-fit transform that maps points A on to points B
+    Input:
+        A: Nxm numpy array of source mD points
+        B: Nxm numpy array of destination mD point
+        init_pose: (m+1)x(m+1) homogeneous transformation
+        max_iterations: exit algorithm after max_iterations
+        tolerance: convergence criteria
+    Output:
+        T: final homogeneous transformation that maps A on to B
+        distances: Euclidean distances (errors) of the nearest neighbor
+        i: number of iterations to converge
+    '''
+    # get number of dimensions
+    m = A.shape[1]
+
+    # make points homogeneous, copy them to maintain the originals
+    src = np.ones((m + 1, A.shape[0]))
+    dst = np.ones((m + 1, B.shape[0]))
+    src[:m, :] = np.copy(A.T)
+    dst[:m, :] = np.copy(B.T)
+
+    # apply the initial pose estimation
+    if init_pose is not None:
+        src = np.dot(init_pose, src)
+
+    prev_error = 0
+
+    for i in range(max_iterations):
+        # find the nearest neighbors between the current source and destination points
+        distances, indices = nearest_neighbor(src[:m, :].T, dst[:m, :].T)
+
+        # compute the transformation between the current source and nearest destination points
+        T = cp(src[:m, :].T, dst[:m, indices].T, is_scale=True)
+
+        # update the current source
+        src = np.dot(T, src)
+
+        # check error
+        mean_error = np.mean(distances)
+        if np.abs(prev_error - mean_error) < tolerance:
+            break
+        prev_error = mean_error
+
+    # calculate final transformation
+    T = cp(A, src[:m, :].T, is_scale=True)
+
+    return T, distances, i
+
+
 import numba
 
 
@@ -414,6 +481,25 @@ def ICPError(is_interocular=True):
     return templateError
 
 
+def MICCError():
+    def templateError(y_true, y_pred):
+        y_true_vertices = y_true.copy()
+        y_pred_vertices = y_pred[face_mask_np > 0]
+
+        # Tform = cp(y_pred_vertices, y_true_vertices)
+        Tform, mean_dist, break_itr = myICP(y_pred_vertices[0::], y_true_vertices[0::], max_iterations=25)
+
+        # y_fit_vertices = y_pred_vertices.dot(Tform[0:3, 0:3].T) + Tform[0:3, 3]
+        # dist = np.linalg.norm(y_fit_vertices - y_true_vertices, axis=1)
+        outer_interocular_dist = y_pred[uv_kpt[36, 0], uv_kpt[36, 1]] - y_pred[uv_kpt[45, 0], uv_kpt[45, 1]]
+        bbox_size = np.linalg.norm(outer_interocular_dist[0:3])
+
+        loss = np.mean(mean_dist / bbox_size)
+        return loss
+
+    return templateError
+
+
 def getErrorFunction(error_func_name='NME', rate=1.0):
     if error_func_name == 'nme2d' or error_func_name == 'normalized mean error2d':
         return PRNError(is_2d=True, is_normalized=True, is_foreface=True)
@@ -439,6 +525,8 @@ def getErrorFunction(error_func_name='NME', rate=1.0):
         return ICPError(is_interocular=True)
     elif error_func_name == 'icp2':
         return ICPError(is_interocular=False)
+    elif error_func_name == 'micc':
+        return MICCError()
 
     else:
         print('unknown error:', error_func_name)
