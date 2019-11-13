@@ -60,6 +60,34 @@ def UVLoss(is_foreface=False, is_weighted=False, is_nme=False):
     return TemplateLoss
 
 
+def UVLoss2(is_foreface=False, is_weighted=False, is_kpt=False):
+    class TemplateLoss(nn.Module):
+        def __init__(self, rate=1.0):
+            super(TemplateLoss, self).__init__()
+            self.rate = rate
+
+            temp_weight_mask = weight_mask.clone()
+            if is_kpt:
+                temp_weight_mask = (temp_weight_mask ** 2) / 4.
+            self.weight_mask = nn.Parameter(temp_weight_mask.clone())
+
+            self.face_mask = nn.Parameter(face_mask.clone())
+            self.weight_mask.requires_grad = False
+            self.face_mask.requires_grad = False
+
+        def forward(self, y_true, y_pred):
+            dist = torch.sum((y_true - y_pred) ** 2, 1)
+            if is_weighted:
+                dist = dist * self.weight_mask
+            if is_foreface:
+                dist = dist * (self.face_mask * face_mask_mean_fix_rate)
+
+            loss = torch.mean(dist)
+            return loss * self.rate
+
+    return TemplateLoss
+
+
 def ParamLoss(mode):
     class TemplateLoss(nn.Module):
         def __init__(self, rate=1.0):
@@ -156,6 +184,10 @@ def getLossFunction(loss_func_name='SquareError'):
         return UVLoss(is_foreface=True, is_weighted=False)
     elif loss_func_name == 'ForefaceWeightedRootSquareError' or loss_func_name == 'fwrse':
         return UVLoss(is_foreface=True, is_weighted=True)
+    elif loss_func_name == 'fwse':
+        return UVLoss2(is_foreface=True, is_weighted=True, is_kpt=False)
+    elif loss_func_name == 'fwsekpt':
+        return UVLoss2(is_foreface=True, is_weighted=True, is_kpt=True)
     elif loss_func_name == 'nme':
         return UVLoss(is_foreface=True, is_weighted=False, is_nme=True)
     elif loss_func_name == 'mae':

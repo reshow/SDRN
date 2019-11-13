@@ -786,11 +786,18 @@ class VisiblePRN(nn.Module):
 class SDNLoss(nn.Module):
     def __init__(self):
         super(SDNLoss, self).__init__()
-        self.criterion0 = getLossFunction('fwrse')(0.1)  # final pos
-        self.criterion1 = getLossFunction('fwrse')(0.5)  # offset
-        self.criterion2 = getLossFunction('fwrse')(1)  # kpt
+        # self.criterion0 = getLossFunction('fwrse')(0.1)  # final pos
+        # self.criterion1 = getLossFunction('fwrse')(0.5)  # offset
+        # self.criterion2 = getLossFunction('fwrse')(1)  # kpt
+        # self.criterion3 = getLossFunction('bce')(0.1)  # attention
+        # self.criterion4 = getLossFunction('smooth')(0.)
+
+        self.criterion0 = getLossFunction('fwse')(0.01)  # final pos
+        self.criterion1 = getLossFunction('fwse')(0.01)  # offset
+        self.criterion2 = getLossFunction('fwsekpt')(0.2)  # kpt
         self.criterion3 = getLossFunction('bce')(0.1)  # attention
         self.criterion4 = getLossFunction('smooth')(0.)
+
         self.metrics0 = getLossFunction('nme')(1.)
         self.metrics1 = getLossFunction('frse')(1.)
         self.metrics2 = getLossFunction('kptc')(1.)
