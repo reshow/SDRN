@@ -17,3 +17,4 @@ data
 tmp
 *.pkl
 *.pth
+.ipynb_*
