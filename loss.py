@@ -255,25 +255,45 @@ def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=Fals
     return templateError
 
 
-def cp(kpt_src, kpt_dst):
-    A = kpt_src
-    B = kpt_dst
-    mu_A = A.mean(axis=0)
-    mu_B = B.mean(axis=0)
-    AA = A - mu_A
-    BB = B - mu_B
-    H = AA.T.dot(BB)
-    U, S, Vt = np.linalg.svd(H)
-    R = Vt.T.dot(U.T)
-    # if np.linalg.det(R) < 0:
-    #     print('singular R')
-    #     Vt[2, :] *= -1
-    #     R = Vt.T.dot(U.T)
-    t = mu_B - mu_A.dot(R.T)
+def cp(kpt_src, kpt_dst, is_scale=True):
+    if is_scale:
+        sum_dist1 = np.sum(np.linalg.norm(kpt_src - kpt_src[0], axis=1))
+        sum_dist2 = np.sum(np.linalg.norm(kpt_dst - kpt_dst[0], axis=1))
+        A = kpt_src * sum_dist2 / sum_dist1
+        B = kpt_dst
+        mu_A = A.mean(axis=0)
+        mu_B = B.mean(axis=0)
+        AA = A - mu_A
+        BB = B - mu_B
+        H = AA.T.dot(BB)
+        U, S, Vt = np.linalg.svd(H)
+        R = Vt.T.dot(U.T)
+        # if np.linalg.det(R) < 0:
+        #     print('singular R')
+        #     Vt[2, :] *= -1
+        #     R = Vt.T.dot(U.T)
+        t = mu_B - mu_A.dot(R.T)
+        R = R * sum_dist2 / sum_dist1
+    else:
+        A = kpt_src
+        B = kpt_dst
+        mu_A = A.mean(axis=0)
+        mu_B = B.mean(axis=0)
+        AA = A - mu_A
+        BB = B - mu_B
+        H = AA.T.dot(BB)
+        U, S, Vt = np.linalg.svd(H)
+        R = Vt.T.dot(U.T)
+        # if np.linalg.det(R) < 0:
+        #     print('singular R')
+        #     Vt[2, :] *= -1
+        #     R = Vt.T.dot(U.T)
+        t = mu_B - mu_A.dot(R.T)
     tform = np.zeros((4, 4))
     tform[0:3, 0:3] = R
     tform[0:3, 3] = t
     tform[3, 3] = 1
+
     return tform
 
 

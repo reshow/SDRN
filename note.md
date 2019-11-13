@@ -85,3 +85,6 @@
      
     (visible1)
         decay 0.0002
+        
+    11.12
+        decay 0.0002 smooth0.0025
