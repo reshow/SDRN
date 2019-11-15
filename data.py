@@ -123,7 +123,7 @@ def bfm2Mesh(bfm_info, image_shape=default_init_image_shape):
     return mesh_info
 
 
-def UVmap2Mesh(uv_position_map, uv_texture_map=None, only_foreface=True):
+def UVmap2Mesh(uv_position_map, uv_texture_map=None, only_foreface=True, is_extra_triangle=False):
     """
     if no texture map is provided, translate the position map to a point cloud
     :param uv_position_map:
@@ -150,6 +150,7 @@ def UVmap2Mesh(uv_position_map, uv_texture_map=None, only_foreface=True):
                         triangles.append([pa, pc, pb])
                         triangles.append([pa, pb, pd])
                         triangles.append([pa, pd, pb])
+
                 else:
                     if face_mask_np[i, j] == 0:
                         vertices.append(np.array([0, 0, 0]))
@@ -163,19 +164,43 @@ def UVmap2Mesh(uv_position_map, uv_texture_map=None, only_foreface=True):
                         pc = (i - 1) * uv_h + j
                         pd = (i + 1) * uv_h + j + 1
                         if (i > 0) & (i < uv_h - 1) & (j < uv_w - 1):
-                            if not face_mask_np[i, j + 1] == 0:
-                                if not face_mask_np[i - 1, j] == 0:
+                            if is_extra_triangle:
+                                pe = (i - 1) * uv_h + j + 1
+                                pf = (i + 1) * uv_h + j
+                                if (face_mask_np[i, j + 1] > 0) and (face_mask_np[i + 1, j + 1] > 0) and (face_mask_np[i + 1, j] > 0) and (
+                                        face_mask_np[i - 1, j + 1] > 0 and face_mask_np[i - 1, j] > 0):
                                     triangles.append([pa, pb, pc])
                                     triangles.append([pa, pc, pb])
-                                if not face_mask_np[i + 1, j + 1] == 0:
+                                    triangles.append([pa, pc, pe])
+                                    triangles.append([pa, pe, pc])
+                                    triangles.append([pa, pb, pe])
+                                    triangles.append([pa, pe, pb])
+                                    triangles.append([pb, pc, pe])
+                                    triangles.append([pb, pe, pc])
+
                                     triangles.append([pa, pb, pd])
                                     triangles.append([pa, pd, pb])
+                                    triangles.append([pa, pb, pf])
+                                    triangles.append([pa, pf, pb])
+                                    triangles.append([pa, pd, pf])
+                                    triangles.append([pa, pf, pd])
+                                    triangles.append([pb, pd, pf])
+                                    triangles.append([pb, pf, pd])
+
+                            else:
+                                if not face_mask_np[i, j + 1] == 0:
+                                    if not face_mask_np[i - 1, j] == 0:
+                                        triangles.append([pa, pb, pc])
+                                        triangles.append([pa, pc, pb])
+                                    if not face_mask_np[i + 1, j + 1] == 0:
+                                        triangles.append([pa, pb, pd])
+                                        triangles.append([pa, pd, pb])
     else:
         for i in range(uv_h):
             for j in range(uv_w):
                 if not only_foreface:
                     vertices.append(uv_position_map[i][j])
-                    colors.append(np.array([128, 0, 128]))
+                    colors.append(np.array([64, 64, 64]))
                     pa = i * uv_h + j
                     pb = i * uv_h + j + 1
                     pc = (i - 1) * uv_h + j
@@ -416,5 +441,5 @@ def getWeightedKpt(pos):
         for j in range(len(fl[i])):
             p += pos[int(fl[i][j][0]), int(fl[i][j][1])] * fl[i][j][2]
         kpt.append(p)
-    kpt=np.asarray(kpt)
+    kpt = np.asarray(kpt)
     return kpt
