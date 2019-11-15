@@ -155,7 +155,7 @@ def process(file_list, target_dir):
 
 if __name__ == '__main__':
     input_dir = 'data/back/MICC'
-    output_dir = 'data/images/florence'
+    output_dir = 'data/images/micc'
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
     file_list = readFileList()

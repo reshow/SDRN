@@ -20,6 +20,8 @@ if torch.cuda.is_available():
     weight_mask = weight_mask.cuda().float()
     face_mask = face_mask.cuda().float()
     face_mask_3D = face_mask_3D.cuda().float()
+micc_face_mask = io.imread('uv-data/uv_face_MICC.png').astype(float)
+micc_face_mask[micc_face_mask > 0] = 1
 
 
 def UVLoss(is_foreface=False, is_weighted=False, is_nme=False):
@@ -269,7 +271,7 @@ def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=Fals
             if is_foreface:
                 dist = dist * face_mask_np * face_mask_mean_fix_rate
 
-        if is_normalized:
+        if is_normalized:  # 2D bbox size
             # bbox_size = np.sqrt(np.sum(np.square(bbox[0, :] - bbox[1, :])))
             if is_landmark:
                 bbox_size = np.sqrt((bbox[0, 0] - bbox[1, 0]) * (bbox[0, 1] - bbox[1, 1]))
@@ -279,8 +281,17 @@ def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=Fals
                 miny, maxy = np.min(face_vertices[:, 1]), np.max(face_vertices[:, 1])
                 llength = np.sqrt((maxx - minx) * (maxy - miny))
                 bbox_size = llength
-        else:
-            bbox_size = 1.
+        else:  # 3D bbox size
+            face_vertices = y_gt[face_mask_np > 0]
+            minx, maxx = np.min(face_vertices[:, 0]), np.max(face_vertices[:, 0])
+            miny, maxy = np.min(face_vertices[:, 1]), np.max(face_vertices[:, 1])
+            minz, maxz = np.min(face_vertices[:, 2]), np.max(face_vertices[:, 2])
+            if is_landmark:
+                llength = np.sqrt((maxx - minx) ** 2 + (maxy - miny) ** 2)
+            else:
+                llength = np.sqrt((maxx - minx) ** 2 + (maxy - miny) ** 2 + (maxz - minz) ** 2)
+            bbox_size = llength
+
         loss = np.mean(dist / bbox_size)
         return loss
 
@@ -345,21 +356,17 @@ def nearest_neighbor(src, dst):
     return distances.ravel(), indices.ravel()
 
 
-def myICP(A, B, init_pose=None, max_iterations=20, tolerance=0.001):
-    '''
-    The Iterative Closest Point method: finds best-fit transform that maps points A on to points B
-    Input:
-        A: Nxm numpy array of source mD points
-        B: Nxm numpy array of destination mD point
-        init_pose: (m+1)x(m+1) homogeneous transformation
-        max_iterations: exit algorithm after max_iterations
-        tolerance: convergence criteria
-    Output:
-        T: final homogeneous transformation that maps A on to B
-        distances: Euclidean distances (errors) of the nearest neighbor
-        i: number of iterations to converge
-    '''
-    # get number of dimensions
+def myICP(C, B, init_pose=None, max_iterations=20, tolerance=0.1, is_valid=False):
+    if is_valid:
+        A = []
+        distances, indices = nearest_neighbor(C, B)
+        for i in range(len(distances)):
+            if distances[i] < 10:
+                A.append(C[i])
+        A = np.array(A)
+    else:
+        A = C
+
     m = A.shape[1]
 
     # make points homogeneous, copy them to maintain the originals
@@ -373,6 +380,7 @@ def myICP(A, B, init_pose=None, max_iterations=20, tolerance=0.001):
         src = np.dot(init_pose, src)
 
     prev_error = 0
+    # init
 
     for i in range(max_iterations):
         # find the nearest neighbors between the current source and destination points
@@ -484,17 +492,23 @@ def ICPError(is_interocular=True):
 def MICCError():
     def templateError(y_true, y_pred):
         y_true_vertices = y_true.copy()
-        y_pred_vertices = y_pred[face_mask_np > 0]
+        y_true_vertices[:, 2] = y_true_vertices[:, 2] - y_true_vertices[:, 2].mean()
+        y_pred_vertices = y_pred[micc_face_mask > 0]
+        y_pred_vertices[:, 2] = y_pred_vertices[:, 2] - y_pred_vertices[:, 2].mean()
+
+        y_pred_vertices=y_pred_vertices[::2]
 
         # Tform = cp(y_pred_vertices, y_true_vertices)
-        Tform, mean_dist, break_itr = myICP(y_pred_vertices[0::], y_true_vertices[0::], max_iterations=25)
+        Tform, mean_dist, break_itr = myICP(y_pred_vertices[0::], y_true_vertices[0::], max_iterations=20)
+        y_fit_vertices = y_pred_vertices.dot(Tform[0:3, 0:3].T) + Tform[0:3, 3]
+        distances, ind = nearest_neighbor(y_fit_vertices, y_true_vertices)
+        dist = np.linalg.norm(y_true_vertices[ind] - y_fit_vertices, axis=-1)
 
-        # y_fit_vertices = y_pred_vertices.dot(Tform[0:3, 0:3].T) + Tform[0:3, 3]
         # dist = np.linalg.norm(y_fit_vertices - y_true_vertices, axis=1)
         outer_interocular_dist = y_pred[uv_kpt[36, 0], uv_kpt[36, 1]] - y_pred[uv_kpt[45, 0], uv_kpt[45, 1]]
         bbox_size = np.linalg.norm(outer_interocular_dist[0:3])
 
-        loss = np.mean(mean_dist / bbox_size)
+        loss = np.mean(dist / bbox_size)
         return loss
 
     return templateError
@@ -527,6 +541,10 @@ def getErrorFunction(error_func_name='NME', rate=1.0):
         return ICPError(is_interocular=False)
     elif error_func_name == 'micc':
         return MICCError()
+    elif error_func_name == 'mmfacekpt':
+        return PRNError(is_2d=True, is_normalized=False, is_foreface=False, is_landmark=True)
+    elif error_func_name == 'mmface3d':
+        return PRNError(is_2d=False, is_normalized=False, is_foreface=True, is_landmark=False)
 
     else:
         print('unknown error:', error_func_name)

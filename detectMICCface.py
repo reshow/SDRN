@@ -1,4 +1,3 @@
-import dlib
 import skimage.io as io
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,8 +7,8 @@ from PIL import Image
 import scipy.io as sio
 
 
-def addBlankData():
-    for root, dirs, files in os.walk('data/images/florence'):
+def addBlankData(path='data/images/micc'):
+    for root, dirs, files in os.walk(path):
         for file in files:
             if 'init.jpg' in str(file):
                 print(file)
@@ -39,76 +38,77 @@ def addBlankData():
                                              'TformOffset': np.random.rand(4, 4)})
 
 
-def cropMICC():
-    detector_path = 'E:/face/FR&DA/PRNet/Data/net-data/mmod_human_face_detector.dat'
-    predictor_path = 'E:/face/Wang Demo/data/shape_predictor_68_face_landmarks.dat'
-    face_detector = dlib.cnn_face_detection_model_v1(
-        detector_path)
-    predictor = dlib.shape_predictor(predictor_path)
-    resolution_inp = 256
-
-    for root, dirs, files in os.walk('data/images/florence'):
-        for file in files:
-            if 'init.jpg' in str(file):
-                image = io.imread(root + '/' + str(file))
-                pos = np.load(root + '/' + str(file).replace('init.jpg', 'initpos.npy'))
-
-                d_img = Image.fromarray(image)
-                d_img = d_img.resize((75, 75), Image.BILINEAR)
-                d_img = np.array(d_img)
-                dets = face_detector(d_img, 1)
-                if len(dets) > 0:
-                    d = dets[0].rect
-                    left = d.left() * 8
-                    right = d.right() * 8
-                    top = d.top() * 8
-                    bottom = d.bottom() * 8
-                    old_size = (right - left + bottom - top) / 2
-                else:
-                    left = pos[:, 0].min()
-                    right = pos[:, 0].max()
-                    top = pos[:, 0].min()
-                    bottom = pos[:, 0].max() - 20
-                    old_size = (right - left + bottom - top) / 2.75
-
-                center = np.array([right - (right - left) / 2.0, bottom - (bottom - top) / 2.0 + old_size * 0.14])
-                size = int(old_size * 1.58)
-                src_pts = np.array([[center[0] - size / 2, center[1] - size / 2], [center[0] - size / 2, center[1] + size / 2],
-                                    [center[0] + size / 2, center[1] - size / 2]])
-                DST_PTS = np.array([[0, 0], [0, resolution_inp - 1], [resolution_inp - 1, 0]])
-                tform = estimate_transform('similarity', src_pts, DST_PTS)
-                trans_mat = tform.params
-                trans_mat_inv = tform._inv_matrix
-                scale = trans_mat[0][0]
-
-                position = pos.copy()
-                position[:, 2] = 1
-                position = np.dot(position, trans_mat.T)
-                position[:, 2] = pos[:, 2] * scale  # scale z
-                position[:, 2] = position[:, 2] - np.min(position[:, 2])
-
-                cropped_image = warp(image, tform.inverse, output_shape=(resolution_inp, resolution_inp))
-                io.imsave(root + '/' + str(file).replace('init.jpg', 'cropped.jpg'), cropped_image)
-                np.save(root + '/' + str(file).replace('init.jpg', 'mesh.npy'), position)
-                print(str(file))
+# def cropMICC():
+#     import dlib
+#     detector_path = 'E:/face/FR&DA/PRNet/Data/net-data/mmod_human_face_detector.dat'
+#     predictor_path = 'E:/face/Wang Demo/data/shape_predictor_68_face_landmarks.dat'
+#     face_detector = dlib.cnn_face_detection_model_v1(
+#         detector_path)
+#     predictor = dlib.shape_predictor(predictor_path)
+#     resolution_inp = 256
+#
+#     for root, dirs, files in os.walk('data/images/micc'):
+#         for file in files:
+#             if 'init.jpg' in str(file):
+#                 image = io.imread(root + '/' + str(file))
+#                 pos = np.load(root + '/' + str(file).replace('init.jpg', 'initpos.npy'))
+#
+#                 d_img = Image.fromarray(image)
+#                 d_img = d_img.resize((75, 75), Image.BILINEAR)
+#                 d_img = np.array(d_img)
+#                 dets = face_detector(d_img, 1)
+#                 if len(dets) > 0:
+#                     d = dets[0].rect
+#                     left = d.left() * 8
+#                     right = d.right() * 8
+#                     top = d.top() * 8
+#                     bottom = d.bottom() * 8
+#                     old_size = (right - left + bottom - top) / 2
+#                 else:
+#                     left = pos[:, 0].min()
+#                     right = pos[:, 0].max()
+#                     top = pos[:, 1].min()
+#                     bottom = pos[:, 1].max() - 20
+#                     old_size = (right - left + bottom - top) / 2.75
+#
+#                 center = np.array([right - (right - left) / 2.0, bottom - (bottom - top) / 2.0 + old_size * 0.14])
+#                 size = int(old_size * 1.58)
+#                 src_pts = np.array([[center[0] - size / 2, center[1] - size / 2], [center[0] - size / 2, center[1] + size / 2],
+#                                     [center[0] + size / 2, center[1] - size / 2]])
+#                 DST_PTS = np.array([[0, 0], [0, resolution_inp - 1], [resolution_inp - 1, 0]])
+#                 tform = estimate_transform('similarity', src_pts, DST_PTS)
+#                 trans_mat = tform.params
+#                 trans_mat_inv = tform._inv_matrix
+#                 scale = trans_mat[0][0]
+#
+#                 position = pos.copy()
+#                 position[:, 2] = 1
+#                 position = np.dot(position, trans_mat.T)
+#                 position[:, 2] = pos[:, 2] * scale  # scale z
+#                 position[:, 2] = position[:, 2] - np.min(position[:, 2])
+#
+#                 cropped_image = warp(image, tform.inverse, output_shape=(resolution_inp, resolution_inp))
+#                 io.imsave(root + '/' + str(file).replace('init.jpg', 'cropped.jpg'), cropped_image)
+#                 np.save(root + '/' + str(file).replace('init.jpg', 'mesh.npy'), position)
+#                 print(str(file))
 
 
 def singleProcess(path):
     resolution_inp = 256
 
-    root=path
-    file=path.split('/')[-1]+'_init.jpg'
+    root = path
+    file = path.split('/')[-1] + '_init.jpg'
 
     image = io.imread(root + '/' + str(file))
     pos = np.load(root + '/' + str(file).replace('init.jpg', 'initpos.npy'))
 
     left = pos[:, 0].min()
     right = pos[:, 0].max()
-    top = pos[:, 0].min()
-    bottom = pos[:, 0].max() - 20
+    top = pos[:, 1].min()
+    bottom = pos[:, 1].max() - 20
     old_size = (right - left + bottom - top) / 2.5
 
-    center = np.array([right - (right - left) / 2.0, bottom - (bottom - top) / 2.0-old_size*0.1])
+    center = np.array([right - (right - left) / 2.0, bottom - (bottom - top) / 2.0 - old_size * 0.1])
     size = int(old_size * 1.58)
     src_pts = np.array([[center[0] - size / 2, center[1] - size / 2], [center[0] - size / 2, center[1] + size / 2],
                         [center[0] + size / 2, center[1] - size / 2]])
@@ -129,5 +129,48 @@ def singleProcess(path):
     np.save(root + '/' + str(file).replace('init.jpg', 'mesh.npy'), position)
     print(str(file))
 
+
+def cropMICC2():
+    resolution_inp = 256
+
+    for root, dirs, files in os.walk('data/images/micc'):
+        for file in files:
+            if 'init.jpg' in str(file):
+                image = io.imread(root + '/' + str(file))
+                pos = np.load(root + '/' + str(file).replace('init.jpg', 'initpos.npy'))
+
+                # left = pos[:, 0].min()
+                # right = pos[:, 0].max()
+                # top = pos[:, 1].min()
+                # bottom = pos[:, 1].max() - 20
+                # old_size = (right - left + bottom - top) / 2.75
+                #
+                # center = np.array([right - (right - left) / 2.0, bottom - (bottom - top) / 2.0 + old_size * 0.14])
+                # size = int(old_size * 1.58)
+
+                center = np.array([300, 275])
+                size = 550
+
+                src_pts = np.array([[center[0] - size / 2, center[1] - size / 2], [center[0] - size / 2, center[1] + size / 2],
+                                    [center[0] + size / 2, center[1] - size / 2]])
+                DST_PTS = np.array([[0, 0], [0, resolution_inp - 1], [resolution_inp - 1, 0]])
+                tform = estimate_transform('similarity', src_pts, DST_PTS)
+                trans_mat = tform.params
+                trans_mat_inv = tform._inv_matrix
+                scale = trans_mat[0][0]
+
+                position = pos.copy()
+                position[:, 2] = 1
+                position = np.dot(position, trans_mat.T)
+                position[:, 2] = pos[:, 2] * scale  # scale z
+                position[:, 2] = position[:, 2] - np.min(position[:, 2])
+
+                cropped_image = warp(image, tform.inverse, output_shape=(resolution_inp, resolution_inp))
+                io.imsave(root + '/' + str(file).replace('init.jpg', 'cropped.jpg'), cropped_image)
+                np.save(root + '/' + str(file).replace('init.jpg', 'mesh.npy'), position)
+                print(str(file))
+
+
 # singleProcess()
-# addBlankData()
+# cropMICC2()
+addBlankData()

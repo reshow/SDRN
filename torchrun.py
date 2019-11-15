@@ -245,6 +245,7 @@ class NetworkManager:
                 writer.add_scalar('val/metrics%d' % j, val_sum_metric_loss[j] / len(val_data_loader), epoch + 1)
 
     def test(self, error_func_list=None, is_visualize=False):
+        from loss import cp, uv_kpt
         total_task = len(self.test_data)
         print('total img:', total_task)
 
@@ -273,6 +274,10 @@ class NetworkManager:
                 b = sio.loadmat(self.test_data[i].bbox_info_path)
                 gt_y = y[0]
                 gt_y = gt_y.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+
+                # for PRN GT
+                # Tform = cp(p[uv_kpt[:, 0], uv_kpt[:, 1], :], gt_y[uv_kpt[:, 0], uv_kpt[:, 1], :])
+                # p = p.dot(Tform[0:3, 0:3].T) + Tform[0:3, 3]
 
                 temp_errors = []
                 for error_func_name in error_func_list:
@@ -333,7 +338,7 @@ class NetworkManager:
         from data import matrix2Angle
         total_task = len(self.test_data)
         print('total img:', total_task)
-        error_func_list = ['landmark2d', 'nme2d', 'nme3d']
+        error_func_list = ['landmark2d', 'landmark3d', 'nme2d', 'nme3d', 'mmfacekpt', 'mmface3d']
         model = self.net.model
         total_error_list = []
         num_output = self.mode[3]
@@ -432,8 +437,8 @@ class NetworkManager:
             np.random.shuffle(error_list_90)
             item_num = len(angle_arg[2])
             balance_error_list = np.concatenate([error_list_30[:item_num], error_list_60[:item_num], error_list_90[:item_num]])
-            print(np.mean(error_list_30[:item_num], axis=0), np.mean(error_list_60[:item_num], axis=0), np.mean(error_list_90[:item_num], axis=0),
-                  np.mean(balance_error_list, axis=0),
+            print(np.mean(error_list_30[:item_num], axis=0), '\n', np.mean(error_list_60[:item_num], axis=0), '\n', np.mean(error_list_90[:item_num], axis=0),
+                  '\n', np.mean(balance_error_list, axis=0), '\n',
                   np.std(balance_error_list[:, 0], ddof=1))
 
     def testMICC(self, is_visualize=False):
@@ -472,6 +477,25 @@ class NetworkManager:
                 for er in temp_errors:
                     print('%.5f' % er, end=' ')
                 print('')
+                mean_errors = np.mean(total_error_list, axis=0)
+                for er in mean_errors:
+                    print('%.5f' % er, end=' ')
+                print('')
+
+                if is_visualize:
+                    tex = np.load('data/images/AFLW2000-full/image00002/image00002_uv_texture_map.npy').astype(np.float32)
+                    init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                    show([p, tex, init_image], mode='uvmap')
+
+            for i in range(len(error_func_list)):
+                print(error_func_list[i], mean_errors[i])
+            se_idx = np.argsort(np.sum(total_error_list, axis=-1))
+            se_data_list = np.array(self.test_data)[se_idx]
+            se_path_list = [a.cropped_image_path for a in se_data_list]
+            sep = '\n'
+            fout = open('errororder.txt', 'w', encoding='utf-8')
+            fout.write(sep.join(se_path_list))
+            fout.close()
 
 
 if __name__ == '__main__':
