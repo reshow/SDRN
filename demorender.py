@@ -76,7 +76,7 @@ def renderLightBack(posmap, init_image=None):
 
 
 def renderLight(posmap, init_image=None, is_render=True):
-    tex = tex = np.ones((256, 256, 3)) / 2
+    tex = np.ones((256, 256, 3)) / 2
     mesh = UVmap2Mesh(posmap, tex, is_extra_triangle=False)
     vertices = mesh['vertices']
     triangles = mesh['triangles']
@@ -120,7 +120,7 @@ def renderLight(posmap, init_image=None, is_render=True):
     return color
 
 
-def plot_kpt(image, kpt, is_render=True):
+def plot_kpt(image, kpt, is_render=True, color_rate=0):
     ''' Draw 68 key points
     Args:
         image: the input image
@@ -130,11 +130,11 @@ def plot_kpt(image, kpt, is_render=True):
     kpt = np.round(kpt).astype(np.int32)
     for i in range(kpt.shape[0]):
         st = kpt[i, :2]
-        image = cv2.circle(image, (st[0], st[1]), 1, (0, 0, 255), 2)
+        image = cv2.circle(image, (st[0], st[1]), 1, (0 + color_rate, 0, 255 - color_rate), 2)
         if i in end_list:
             continue
         ed = kpt[i + 1, :2]
-        image = cv2.line(image, (st[0], st[1]), (ed[0], ed[1]), (255, 255, 255), 1)
+        image = cv2.line(image, (st[0], st[1]), (ed[0], ed[1]), (0 + color_rate, 0, 255 - color_rate), 1)
     if is_render:
         showImage(image)
     return image
@@ -146,15 +146,23 @@ def demoKpt(posmap, image, is_render=True):
     return ploted
 
 
+def compareKpt(posmap, gtposmap, image, is_render=True):
+    kpt1 = getLandmark(posmap)
+    kpt2 = getLandmark(gtposmap)
+    ploted = plot_kpt(image, kpt1, is_render=is_render)
+    ploted = plot_kpt(ploted, kpt2, is_render=is_render, color_rate=int(255))
+    return ploted
+
+
 def demoAll(posmap, image, is_render=True):
-    return renderLight(posmap, image.copy(), is_render=is_render), demoKpt(posmap, image.copy() , is_render=is_render)
+    return renderLight(posmap, image.copy(), is_render=is_render), demoKpt(posmap, image.copy(), is_render=is_render)
 
 
 if __name__ == '__main__':
     pass
-    # pos = np.load('data/images/AFLW2000-full/image00004/image00004_cropped_uv_posmap.npy')
-    # img = np.load('data/images/AFLW2000-full/image00004/image00004_cropped.npy')
-    # renderLight(pos, img)
+    pos = np.load('data/images/AFLW2000-full/image00004/image00004_cropped_uv_posmap.npy')
+    img = np.load('data/images/AFLW2000-full/image00004/image00004_cropped.npy')
+    renderLight(pos, img)
     # from data import getLandmark
     # kpt=getLandmark(pos)
     # plot_kpt(img,kpt)

@@ -291,7 +291,7 @@ class NetworkManager:
                 print('')
                 if is_visualize:
 
-                    if temp_errors[0] > 0.06:
+                    if temp_errors[0] > 0.00:
                         init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
                         diff = np.square(gt_y - p) * masks.face_mask_np3d
                         dist2d = np.sqrt(np.sum(diff[:, :, 0:2], axis=-1))
@@ -499,7 +499,7 @@ class NetworkManager:
 
     def testDemo(self, error_func_list=None, is_visualize=False):
         from loss import cp, uv_kpt
-        from demorender import demoAll
+        from demorender import demoAll, compareKpt
         total_task = len(self.test_data)
         print('total img:', total_task)
 
@@ -544,7 +544,7 @@ class NetworkManager:
                     print('%.5f' % er, end=' ')
                 print('')
                 if is_visualize:
-                    if temp_errors[0] <= 0.07:
+                    if temp_errors[0] >= 0.06:
                         demobg = np.load(self.test_data[i].cropped_image_path).astype(np.float32)
                         init_image = demobg / 255.0
 
@@ -552,6 +552,8 @@ class NetworkManager:
                         io.imsave('tmp/light/' + str(i) + '_shape.jpg', img1)
                         io.imsave('tmp/light/' + str(i) + '_kpt.jpg', img2)
                         io.imsave('tmp/light/' + str(i) + '_init.jpg', init_image)
+                        # img1 = compareKpt(p, gt_y, demobg, is_render=False)
+                        # io.imsave('tmp/light/' + str(i) + 'compare.jpg', img1)
                     # diff = np.square(gt_y - p) * masks.face_mask_np3d
                     # dist2d = np.sqrt(np.sum(diff[:, :, 0:2], axis=-1))
                     # dist2d[0, 0] = 30.0
