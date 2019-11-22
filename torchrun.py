@@ -290,8 +290,11 @@ class NetworkManager:
                     print('%.5f' % er, end=' ')
                 print('')
                 if is_visualize:
-
-                    if temp_errors[0] > 0.00:
+                    init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                    plt.axis('off')
+                    plt.imshow(init_image)
+                    plt.show()
+                    if temp_errors[0] > 1.00:
                         init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
                         diff = np.square(gt_y - p) * masks.face_mask_np3d
                         dist2d = np.sqrt(np.sum(diff[:, :, 0:2], axis=-1))
@@ -338,7 +341,7 @@ class NetworkManager:
         from data import matrix2Angle
         total_task = len(self.test_data)
         print('total img:', total_task)
-        error_func_list = ['landmark2d', 'landmark3d', 'nme2d', 'nme3d', 'mmfacekpt', 'mmface3d']
+        error_func_list = ['landmark2d', 'landmark3d', 'nme2d', 'nme3d', 'icp']
         model = self.net.model
         total_error_list = []
         num_output = self.mode[3]
@@ -450,9 +453,14 @@ class NetworkManager:
         num_input = self.mode[4]
         data_generator = DataGenerator(all_image_data=self.test_data, mode=self.mode[2], is_aug=False, is_pre_read=self.is_pre_read)
 
+        pose_error_list = [[], [], [], [], []]
+
         with torch.no_grad():
             model.eval()
             for i in range(len(self.test_data)):
+                image_id = int(self.test_data[i].cropped_image_path.split('/')[-2])
+                image_pose_type = (image_id % 1000) // 4
+
                 data = data_generator.__getitem__(i)
                 x = data[0]
                 x = x.to(self.net.device).float()
@@ -470,9 +478,13 @@ class NetworkManager:
                 temp_errors = []
                 for error_func_name in error_func_list:
                     error_func = getErrorFunction(error_func_name)
-                    error = error_func(gt_mesh, p)
+                    error = error_func(gt_mesh, p.copy())
                     temp_errors.append(error)
                 total_error_list.append(temp_errors)
+
+                # pose part
+                pose_error_list[image_pose_type].append(temp_errors)
+
                 print(self.test_data[i].init_image_path, end='  ')
                 for er in temp_errors:
                     print('%.5f' % er, end=' ')
@@ -482,13 +494,19 @@ class NetworkManager:
                     print('%.5f' % er, end=' ')
                 print('')
 
-                if is_visualize:
+                # pose part
+                for pl in pose_error_list:
+                    print('%.5f' % np.mean(np.array(pl)), end=' ')
+                print('')
+
+                if is_visualize and temp_errors[0] > 0.3:
                     tex = np.load('data/images/AFLW2000-full/image00002/image00002_uv_texture_map.npy').astype(np.float32)
                     init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
                     show([p, tex, init_image], mode='uvmap')
 
             for i in range(len(error_func_list)):
                 print(error_func_list[i], mean_errors[i])
+
             se_idx = np.argsort(np.sum(total_error_list, axis=-1))
             se_data_list = np.array(self.test_data)[se_idx]
             se_path_list = [a.cropped_image_path for a in se_data_list]
@@ -548,7 +566,7 @@ class NetworkManager:
                         demobg = np.load(self.test_data[i].cropped_image_path).astype(np.float32)
                         init_image = demobg / 255.0
 
-                        img1, img2 = demoAll(p, demobg,is_render=False)
+                        img1, img2 = demoAll(p, demobg, is_render=False)
                         io.imsave('tmp/light/' + str(i) + '_shape.jpg', img1)
                         io.imsave('tmp/light/' + str(i) + '_kpt.jpg', img2)
                         io.imsave('tmp/light/' + str(i) + '_init.jpg', init_image)
@@ -595,6 +613,39 @@ class NetworkManager:
             fout.write(sep.join(se_path_list))
             fout.close()
 
+    def testSpeed(self):
+        total_task = len(self.test_data)
+        print('total img:', total_task)
+
+        model = self.net.model
+        total_error_list = []
+        num_output = self.mode[3]
+        num_input = self.mode[4]
+        data_generator = DataGenerator(all_image_data=self.test_data, mode=self.mode[2], is_aug=False, is_pre_read=self.is_pre_read)
+
+        total_time = 0
+        with torch.no_grad():
+            model.eval()
+            for i in range(len(self.test_data)):
+                data = data_generator.__getitem__(i)
+                x = data[0]
+                x = x.to(self.net.device).float()
+                y = [data[j] for j in range(1, 1 + num_input)]
+                for j in range(num_input):
+                    y[j] = y[j].to(x.device).float()
+                    y[j] = torch.unsqueeze(y[j], 0)
+                x = torch.unsqueeze(x, 0)
+
+                begin_time = time.time()
+                outputs = model(x, *y,is_speed_test=True)
+                end_time = time.time()
+                total_time = total_time + end_time - begin_time
+                print(i + 1, total_time / (i + 1))
+
+                # for PRN GT
+                # Tform = cp(p[uv_kpt[:, 0], uv_kpt[:, 1], :], gt_y[uv_kpt[:, 0], uv_kpt[:, 1], :])
+                # p = p.dot(Tform[0:3, 0:3].T) + Tform[0:3, 3]
+
 
 if __name__ == '__main__':
     random.seed(0)
@@ -615,6 +666,7 @@ if __name__ == '__main__':
     parser.add_argument('-aflw', '--isTestAFLW', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-micc', '--isTestMICC', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-demo', '--isTestDemo', default=False, type=ast.literal_eval, help='')
+    parser.add_argument('-speed', '--isTestSpeed', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-testsingle', '--isTestSingle', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-visualize', '--isVisualize', default=False, type=ast.literal_eval, help='')
     parser.add_argument('--errorFunction', default='nme2d', nargs='+', type=str)
@@ -680,5 +732,12 @@ if __name__ == '__main__':
         if run_args.loadModelPath is not None:
             net_manager.net.loadWeights(run_args.loadModelPath)
             net_manager.testDemo(error_func_list=run_args.errorFunction, is_visualize=True)
+
+    if run_args.isTestSpeed:
+        for dir in run_args.testDataDir:
+            net_manager.addImageData(dir, 'test')
+        if run_args.loadModelPath is not None:
+            net_manager.net.loadWeights(run_args.loadModelPath)
+            net_manager.testSpeed()
 
     writer.close()

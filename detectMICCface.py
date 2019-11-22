@@ -26,7 +26,7 @@ def addBlankData(path='data/images/micc'):
                 offset_posmap_path = image_dir + '/' + image_name + '_offset_posmap.npy'
                 attention_mask_path = image_dir + '/' + image_name + '_attention_mask.npy'
 
-                np.save(cropped_image_path, image.astype(np.uint8))
+                np.save(cropped_image_path, image)
                 np.save(offset_posmap_path, np.random.rand(256, 256, 3))
                 fake_mask = np.random.rand(256, 256)
                 fake_mask[fake_mask > 0.5] = 1
@@ -36,6 +36,7 @@ def addBlankData(path='data/images/micc'):
                                              'TformInv': np.random.rand(3, 3),
                                              'Tform3d': np.random.rand(4, 4), 'Kpt': np.random.rand(68, 3), 'OldKpt': np.random.rand(68, 3),
                                              'TformOffset': np.random.rand(4, 4)})
+
 
 
 # def cropMICC():
@@ -130,6 +131,13 @@ def singleProcess(path):
     print(str(file))
 
 
+size_list = [[95, 425], [75, 375], [45, 405], [90, 430], [75, 475], [95, 445], [35, 415], [115, 445], [90, 450], [20, 450],
+             [80, 450], [50, 410], [100, 440], [100, 420], [50, 410], [100, 430], [80, 420], [95, 435], [95, 405], [80, 430],
+             [110, 390], [95, 450], [80, 410], [100, 430], [70, 400], [50, 400], [80, 450], [80, 460], [50, 380], [100, 420],
+             [70, 400], [70, 450], [80, 430], [80, 440], [90, 450], [70, 470], [90, 420], [90, 380], [100, 470], [80, 430],
+             [100, 380], [60, 420], [70, 410], [50, 440], [80, 410], [150, 460], [100, 480], [70, 390], [20, 440], [100, 450]]
+
+
 def cropMICC2():
     resolution_inp = 256
 
@@ -139,17 +147,15 @@ def cropMICC2():
                 image = io.imread(root + '/' + str(file))
                 pos = np.load(root + '/' + str(file).replace('init.jpg', 'initpos.npy'))
 
-                # left = pos[:, 0].min()
-                # right = pos[:, 0].max()
-                # top = pos[:, 1].min()
-                # bottom = pos[:, 1].max() - 20
-                # old_size = (right - left + bottom - top) / 2.75
-                #
-                # center = np.array([right - (right - left) / 2.0, bottom - (bottom - top) / 2.0 + old_size * 0.14])
-                # size = int(old_size * 1.58)
+                image_id = int(str(file).split('_')[0]) // 10000 - 1
+                up = size_list[image_id][0]
+                down = size_list[image_id][1]
 
-                center = np.array([300, 275])
-                size = 550
+                center = np.array([300, up + (down - up) / 2.])
+                size = (down - up) * 0.67 * 1.75
+
+                # center = np.array([300, 275])
+                # size = 550
 
                 src_pts = np.array([[center[0] - size / 2, center[1] - size / 2], [center[0] - size / 2, center[1] + size / 2],
                                     [center[0] + size / 2, center[1] - size / 2]])

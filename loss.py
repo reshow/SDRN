@@ -22,6 +22,8 @@ if torch.cuda.is_available():
     face_mask_3D = face_mask_3D.cuda().float()
 micc_face_mask = io.imread('uv-data/uv_face_MICC.png').astype(float)
 micc_face_mask[micc_face_mask > 0] = 1
+micc_center_mask = io.imread('uv-data/uv_face_MICC_coreface.png')
+micc_center_mask[micc_center_mask > 0] = 1
 
 
 def UVLoss(is_foreface=False, is_weighted=False, is_nme=False):
@@ -489,26 +491,93 @@ def ICPError(is_interocular=True):
     return templateError
 
 
+@numba.njit
+def renderBG(true_bg, pred_bg, true_vert, pred_vert):
+    for i in range(len(true_vert)):
+        x = int(true_vert[i][0])
+        y = int(true_vert[i][1])
+        z = int(true_vert[i][2])
+        if 1 < x < 254 and 1 < y < 254:
+            true_bg[x, y] = max(true_bg[x, y], z)
+            true_bg[x - 1, y] = max(true_bg[x - 1, y], z)
+            true_bg[x - 1, y - 1] = max(true_bg[x - 1, y - 1], z)
+            true_bg[x - 1, y + 1] = max(true_bg[x - 1, y + 1], z)
+            true_bg[x, y - 1] = max(true_bg[x, y - 1], z)
+            true_bg[x, y + 1] = max(true_bg[x, y + 1], z)
+            true_bg[x + 1, y - 1] = max(true_bg[x + 1, y - 1], z)
+            true_bg[x + 1, y] = max(true_bg[x + 1, y], z)
+            true_bg[x + 1, y + 1] = max(true_bg[x + 1, y + 1], z)
+    for i in range(len(pred_vert)):
+        x = int(pred_vert[i][0])
+        y = int(pred_vert[i][1])
+        z = int(pred_vert[i][2])
+        if 1 < x < 254 and 1 < y < 254:
+            pred_bg[x, y] = max(pred_bg[x, y], z)
+            pred_bg[x - 1, y] = max(pred_bg[x - 1, y], z)
+            pred_bg[x - 1, y - 1] = max(pred_bg[x - 1, y - 1], z)
+            pred_bg[x - 1, y + 1] = max(pred_bg[x - 1, y + 1], z)
+            pred_bg[x, y - 1] = max(pred_bg[x, y - 1], z)
+            pred_bg[x, y + 1] = max(pred_bg[x, y + 1], z)
+            pred_bg[x + 1, y - 1] = max(pred_bg[x + 1, y - 1], z)
+            pred_bg[x + 1, y] = max(pred_bg[x + 1, y], z)
+            pred_bg[x + 1, y + 1] = max(pred_bg[x + 1, y + 1], z)
+
+
+def depthAlign(y_true, y_pred):
+    kpt = y_pred[uv_kpt[:, 0], uv_kpt[:, 1]]
+    valid_pred = y_pred[face_mask_np > 0]
+
+    true_bg = np.zeros((256, 256))
+    pred_bg = np.zeros((256, 256))
+
+    renderBG(true_bg, pred_bg, y_true, valid_pred)
+
+    sum_true = 0
+    sum_pred = 0
+    for p in kpt:
+        x = int(p[0])
+        y = int(p[1])
+        sum_true += true_bg[x, y]
+        sum_pred += pred_bg[x, y]
+    print(sum_true, sum_pred)
+    return sum_true / 68., sum_pred / 68.
+
+
 def MICCError():
     def templateError(y_true, y_pred):
-        y_true_vertices = y_true.copy()
-        y_true_vertices[:, 2] = y_true_vertices[:, 2] - y_true_vertices[:, 2].mean()
-        y_pred_vertices = y_pred[micc_face_mask > 0]
-        y_pred_vertices[:, 2] = y_pred_vertices[:, 2] - y_pred_vertices[:, 2].mean()
+        mean_depth_true, mean_depth_pred = depthAlign(y_true, y_pred)
 
-        y_pred_vertices=y_pred_vertices[::2]
+        y_true_vertices = y_true.copy()
+        y_pred_vertices = y_pred[micc_center_mask > 0]
+
+        y_true_vertices[:, 2] = y_true_vertices[:, 2] - mean_depth_true
+        y_pred_vertices[:, 2] = y_pred_vertices[:, 2] - mean_depth_pred
+
+        y_pred_vertices = y_pred_vertices[::4]
 
         # Tform = cp(y_pred_vertices, y_true_vertices)
-        Tform, mean_dist, break_itr = myICP(y_pred_vertices[0::], y_true_vertices[0::], max_iterations=20)
+
+        Tform, mean_dist, break_itr = myICP(y_pred_vertices[0::], y_true_vertices[0::], max_iterations=40, tolerance=0.1)
         y_fit_vertices = y_pred_vertices.dot(Tform[0:3, 0:3].T) + Tform[0:3, 3]
-        distances, ind = nearest_neighbor(y_fit_vertices, y_true_vertices)
-        dist = np.linalg.norm(y_true_vertices[ind] - y_fit_vertices, axis=-1)
+        # y_fit_vertices = y_pred_vertices + Tform[0:3, 3]
+        # distances, ind = nearest_neighbor(y_fit_vertices, y_true_vertices)
+        # dist = np.linalg.norm(y_true_vertices[ind] - y_fit_vertices, axis=-1)
+        distances, ind = nearest_neighbor(y_true_vertices, y_fit_vertices)
+
+        valid_true_vertices = []
+        for i in range(len(distances)):
+            if distances[i] < 5:
+                valid_true_vertices.append(y_true_vertices[i])
+        print('len', len(valid_true_vertices))
+        valid_true_vertices = np.array(valid_true_vertices)[::4]
+        valid_pred_vertices = y_pred[face_mask_np > 0].dot(Tform[0:3, 0:3].T) + Tform[0:3, 3]
+        Tform, mean_dist, break_itr = myICP(valid_true_vertices, valid_pred_vertices, max_iterations=60, tolerance=0.1)
 
         # dist = np.linalg.norm(y_fit_vertices - y_true_vertices, axis=1)
         outer_interocular_dist = y_pred[uv_kpt[36, 0], uv_kpt[36, 1]] - y_pred[uv_kpt[45, 0], uv_kpt[45, 1]]
         bbox_size = np.linalg.norm(outer_interocular_dist[0:3])
 
-        loss = np.mean(dist / bbox_size)
+        loss = np.mean(mean_dist / bbox_size)
         return loss
 
     return templateError

@@ -60,6 +60,7 @@ def showImage(image, is_path=False):
         io.imshow(img)
         plt.show()
     else:
+        plt.axis('off')
         io.imshow(image)
         plt.show()
 

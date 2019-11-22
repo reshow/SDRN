@@ -751,7 +751,7 @@ class VisiblePRN(nn.Module):
         self.rebuilder = VisibleRebuildModule()
         self.loss = VisibleLoss()
 
-    def forward(self, inpt, gt_posmap, gt_offset, gt_attention, is_rebuild=True):
+    def forward(self, inpt, gt_posmap, gt_offset, gt_attention, is_rebuild=True, is_speed_test=False):
         x = self.layer0(inpt)
         x = self.block1(x)
         x = self.block2(x)
@@ -778,8 +778,17 @@ class VisiblePRN(nn.Module):
             else:
                 posmap = self.rebuilder(offset, kpt_posmap)
 
+        if is_speed_test:
+            return posmap
+
+
         loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention = self.loss(posmap, offset, kpt_posmap, attention, gt_posmap, gt_offset,
                                                                                          gt_attention)
+
+        # a = attention.squeeze().cpu().numpy()
+        # import visualize
+        # visualize.showImage(np.exp(a), False)
+
         return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, posmap
 
 

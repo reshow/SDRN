@@ -90,11 +90,11 @@ def renderObj(obj, x, y):
     mesh = pyrender.Mesh.from_trimesh(obj)
     # camera = pyrender.PerspectiveCamera(yfov=np.pi / 3.0, aspectRatio=1.0)
 
-    pitch_angle = x / 180. * np.pi
+    pitch_angle = (x+22.5) / 180. * np.pi
     yaw_angle = y / 180. * np.pi
 
     R2 = angle2Matrix(0, yaw_angle, 0)
-    R1 = angle2Matrix(np.pi / 6. + pitch_angle, 0, 0)
+    R1 = angle2Matrix(pitch_angle , 0, 0)
 
     R = R2.dot(R1)
     face_pose = np.zeros((4, 4))
@@ -132,7 +132,7 @@ def renderObj(obj, x, y):
 def renderObjList(obj, target_dir, id):
     obj.vertices = obj.vertices - obj.vertices.mean(axis=0)
     for y in range(-80, 81, 40):
-        for x in [0, -15, 20, 25]:
+        for x in [-15, 0, 15, 30]:
             image, pos = renderObj(obj, x, y)
             save_folder = target_dir + '/' + str(id)
             if not os.path.exists(save_folder):
