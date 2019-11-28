@@ -618,10 +618,9 @@ class NetworkManager:
         print('total img:', total_task)
 
         model = self.net.model
-        total_error_list = []
         num_output = self.mode[3]
         num_input = self.mode[4]
-        data_generator = DataGenerator(all_image_data=self.test_data, mode=self.mode[2], is_aug=False, is_pre_read=self.is_pre_read)
+        data_generator = DataGenerator(all_image_data=self.test_data, mode=self.mode[2], is_aug=False, is_pre_read=True)
 
         total_time = 0
         with torch.no_grad():
@@ -636,11 +635,14 @@ class NetworkManager:
                     y[j] = torch.unsqueeze(y[j], 0)
                 x = torch.unsqueeze(x, 0)
 
+                torch.cuda.synchronize()
                 begin_time = time.time()
-                outputs = model(x, *y,is_speed_test=True)
+
+                model(x, *y,is_speed_test=True)
+                torch.cuda.synchronize()
                 end_time = time.time()
                 total_time = total_time + end_time - begin_time
-                print(i + 1, total_time / (i + 1))
+                print(i + 1, total_time / (i + 1),end_time-begin_time)
 
                 # for PRN GT
                 # Tform = cp(p[uv_kpt[:, 0], uv_kpt[:, 1], :], gt_y[uv_kpt[:, 0], uv_kpt[:, 1], :])
@@ -736,8 +738,6 @@ if __name__ == '__main__':
     if run_args.isTestSpeed:
         for dir in run_args.testDataDir:
             net_manager.addImageData(dir, 'test')
-        if run_args.loadModelPath is not None:
-            net_manager.net.loadWeights(run_args.loadModelPath)
             net_manager.testSpeed()
 
     writer.close()
