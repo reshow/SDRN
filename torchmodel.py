@@ -830,9 +830,9 @@ class SDNLoss(nn.Module):
         return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention
 
 
-class SDN(nn.Module):
+class SDRN(nn.Module):
     def __init__(self):
-        super(SDN, self).__init__()
+        super(SDRN, self).__init__()
         self.feature_size = 16
         feature_size = self.feature_size
         self.layer0 = Conv2d_BN_AC(in_channels=3, out_channels=feature_size, kernel_size=4, stride=1, padding=1)
@@ -1033,8 +1033,8 @@ class TorchNet:
         self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0001)
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.5)
 
-    def buildSDN(self):
-        self.model = SDN()
+    def buildSDRN(self):
+        self.model = SDRN()
 
         if self.gpu_num > 1:
             self.model = nn.DataParallel(self.model, device_ids=self.visible_devices)

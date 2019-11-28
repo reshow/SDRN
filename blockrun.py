@@ -103,7 +103,7 @@ class NetworkManager:
                           'SiamPRN': [4, self.net.buildSiamPRN, 'siam', 3, 2],
                           'MeanOffsetPRN': [3, self.net.buildMeanOffsetPRN, 'meanoffset', 4, 4],
                           'VisiblePRN': [5, self.net.buildVisiblePRN, 'visible', 4, 3],
-                          'SDN': [5, self.net.buildSDN, 'visible', 4, 3]}
+                          'SDRN': [5, self.net.buildSDRN, 'visible', 4, 3]}
         self.mode = self.mode_dict['InitPRN']
 
         self.num_thread = args.numReadingThread
