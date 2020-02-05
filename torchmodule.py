@@ -479,7 +479,8 @@ class RTSRegressor(nn.Module):
             nn.BatchNorm1d(filters),
             nn.ReLU()
         )
-        self.R_layer = nn.Sequential(nn.Linear(filters, num_cluster * 3), nn.Sigmoid())
+        # self.R_layer = nn.Sequential(nn.Linear(filters, num_cluster * 3), nn.Sigmoid())
+        self.R_layer = nn.Sequential(nn.Linear(filters, filters // 2), nn.Linear(filters // 2, num_cluster * 3))
         self.T_layer = nn.Sequential(nn.Linear(filters, num_cluster * 3), nn.Sigmoid())
         self.S_layer = nn.Sequential(nn.Linear(filters, num_cluster), nn.Sigmoid())
 

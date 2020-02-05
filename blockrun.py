@@ -26,7 +26,6 @@ import random
 now_time = time.localtime()
 save_dir_time = '/' + str(now_time.tm_year) + '-' + str(now_time.tm_mon) + '-' + str(now_time.tm_mday) + '-' \
                 + str(now_time.tm_hour) + '-' + str(now_time.tm_min) + '-' + str(now_time.tm_sec)
-writer = SummaryWriter(log_dir='tmp' + save_dir_time)
 
 
 class MyThread(threading.Thread):
@@ -396,7 +395,8 @@ if __name__ == '__main__':
 
     os.environ["CUDA_VISIBLE_DEVICES"] = run_args.visibleDevice
     print(torch.cuda.is_available(), torch.cuda.device_count(), torch.cuda.current_device(), torch.cuda.get_device_name(0))
-
+    writer = SummaryWriter(log_dir='tmp' + save_dir_time)
+    save_dir_time = save_dir_time + run_args.netStructure
     net_manager = NetworkManager(run_args)
     net_manager.buildModel(run_args)
     if run_args.isTrain:

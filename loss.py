@@ -102,6 +102,15 @@ def ParamLoss(mode):
         def forward(self, y_true, y_pred):
             if self.mode == 'mae':
                 dist = torch.mean(torch.abs(y_true - y_pred))
+            elif mode == 'maemod':
+                dist = y_true - y_pred
+                for i in range(y_true.shape[0]):
+                    for j in range(y_true.shape[1]):
+                        if dist[i][j] > 1:
+                            dist[i][j] = dist[i][j] - 2
+                        if dist[i][j] < -1:
+                            dist[i][j] = dist[i][j] + 2
+                dist = torch.mean(torch.abs(dist))
             elif self.mode == 'mse':
                 dist = F.mse_loss(y_pred, y_true)
             elif self.mode == 'rmse':
@@ -196,6 +205,8 @@ def getLossFunction(loss_func_name='SquareError'):
         return UVLoss(is_foreface=True, is_weighted=False, is_nme=True)
     elif loss_func_name == 'mae':
         return ParamLoss('mae')
+    elif loss_func_name == 'maemod':
+        return ParamLoss('maemod')
     elif loss_func_name == 'mse':
         return ParamLoss('mse')
     elif loss_func_name == 'rmse':

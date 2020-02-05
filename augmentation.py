@@ -226,7 +226,7 @@ def prnAugment_keras(x):
 
 def prnAugment_torch(x, y, is_rotate=True):
     if is_rotate:
-        if np.random.rand() > 0.5:
+        if np.random.rand() > 0.75:
             x, y = rotateData(x, y, 90)
     if np.random.rand() > 0.75:
         x = randomErase(x)
@@ -239,7 +239,7 @@ def prnAugment_torch(x, y, is_rotate=True):
 
 def attentionAugment_torch(x, y, attention, is_rotate=True):
     if is_rotate:
-        if np.random.rand() > 0.5:
+        if np.random.rand() > 0.75:
             x, y = rotateData(x, y, 90)
     if np.random.rand() > 0.75:
         x, attention = randomMaskErase(x, attention)

@@ -120,7 +120,7 @@ class InitPRN(nn.Module):
         )
         self.loss = InitLoss()
 
-    def forward(self, inpt, gt,is_speed_test=False):
+    def forward(self, inpt, gt, is_speed_test=False):
         x = self.layer0(inpt)
         x = self.encoder(x)
         x = self.decoder(x)
@@ -183,11 +183,12 @@ class OffsetLoss(nn.Module):
     def __init__(self):
         super(OffsetLoss, self).__init__()
         self.criterion0 = getLossFunction('fwrse')(0)
-        self.criterion1 = getLossFunction('fwrse')(0.5)
-        self.criterion2 = getLossFunction('mae')(0.5)
+        self.criterion1 = getLossFunction('fwrse')(1)
+        self.criterion2 = getLossFunction('mae')(1)
         self.criterion3 = getLossFunction('mae')(1)
         self.criterion4 = getLossFunction('mae')(0.25)
-        self.metrics0 = getLossFunction('frse')(1.)
+        self.criterion5 = getLossFunction('smooth')(0.1)
+        self.metrics0 = getLossFunction('nme')(1.)
         self.metrics1 = getLossFunction('frse')(1.)
         self.metrics2 = getLossFunction('mae')(1.)
         self.metrics3 = getLossFunction('mae')(1.)
@@ -200,7 +201,8 @@ class OffsetLoss(nn.Module):
         loss_r = self.criterion2(gt_r, r)
         loss_t = self.criterion3(gt_t, t)
         loss_s = self.criterion4(gt_s, s)
-        loss = loss_posmap + loss_offset + loss_r + loss_t + loss_s
+        loss_smooth = self.criterion5(offset)
+        loss = loss_posmap + loss_offset + loss_r + loss_t + loss_s + loss_smooth
 
         metrics_posmap = self.metrics0(gt_posmap, posmap)
         metrics_offset = self.metrics1(gt_offset, offset)
@@ -260,7 +262,7 @@ class OffsetPRN(nn.Module):
             ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=feature_size * 1, kernel_size=3, stride=1),
             ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=3, stride=1),
             ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=3, stride=1),
-            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=3, stride=1, activation=nn.Sigmoid()))
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=3, stride=1, activation=nn.Tanh()))
         self.rebuilder = RPFOModule()
         self.loss = OffsetLoss()
 
@@ -270,9 +272,8 @@ class OffsetPRN(nn.Module):
 
         r, t, s = self.regressor(x)
         offset = self.decoder(x)
-        offset = offset * 2 - 1
-        # posmap = self.rebuilder(offset, r, t, s)
-        posmap = self.rebuilder(offset, gt_r, gt_t, torch.unsqueeze(gt_s, 1))
+        posmap = self.rebuilder(offset, r, t, s)
+        # posmap = self.rebuilder(offset, gt_r, gt_t, torch.unsqueeze(gt_s, 1))
 
         loss, metrics_posmap, metrics_offset, metrics_r, metrics_t, metrics_s = self.loss(posmap, offset, r, t, s,
                                                                                           gt_posmap, gt_offset, gt_r, gt_t, gt_s)
@@ -374,11 +375,12 @@ class AttentionPRN(nn.Module):
 class QuaternionOffsetLoss(nn.Module):
     def __init__(self):
         super(QuaternionOffsetLoss, self).__init__()
-        self.criterion0 = getLossFunction('fwrse')(0)
+        self.criterion0 = getLossFunction('fwrse')(0.1)
         self.criterion1 = getLossFunction('fwrse')(1)
         self.criterion2 = getLossFunction('rmse')(3)
         self.criterion3 = getLossFunction('rmse')(3)
-        self.metrics0 = getLossFunction('frse')(1.)
+        self.criterion4 = getLossFunction('smooth')(0.1)
+        self.metrics0 = getLossFunction('nme')(1.)
         self.metrics1 = getLossFunction('frse')(1.)
         self.metrics2 = getLossFunction('mae')(1.)
         self.metrics3 = getLossFunction('mae')(1.)
@@ -389,7 +391,8 @@ class QuaternionOffsetLoss(nn.Module):
         loss_offset = self.criterion1(gt_offset, offset)
         loss_q = self.criterion2(gt_q, q)
         loss_t = self.criterion3(gt_t[:, 0:2], t2d)
-        loss = loss_posmap + loss_offset + loss_q + loss_t
+        loss_smooth = self.criterion4(offset)
+        loss = loss_posmap + loss_offset + loss_q + loss_t + loss_smooth
 
         metrics_posmap = self.metrics0(gt_posmap, posmap)
         metrics_offset = self.metrics1(gt_offset, offset)
@@ -532,14 +535,13 @@ class SiamPRN(nn.Module):
         self.rebuilder = EstimateRebuildModule()
         self.loss = SiamLoss()
 
-    def forward(self, inpt, gt_posmap, gt_offset, is_rebuild=False,is_speed_test=False):
+    def forward(self, inpt, gt_posmap, gt_offset, is_rebuild=False, is_speed_test=False):
         x = self.layer0(inpt)
         x = self.encoder(x)
         x_new = x.detach()
         offset = self.decoder(x_new)
 
         kpt_posmap = self.decoder_kpt(x)
-
 
         if is_rebuild:
             posmap = self.rebuilder(offset, kpt_posmap)
@@ -797,17 +799,17 @@ class VisiblePRN(nn.Module):
 class SDNLoss(nn.Module):
     def __init__(self):
         super(SDNLoss, self).__init__()
-        # self.criterion0 = getLossFunction('fwrse')(0.1)  # final pos
-        # self.criterion1 = getLossFunction('fwrse')(0.5)  # offset
-        # self.criterion2 = getLossFunction('fwrse')(1)  # kpt
-        # self.criterion3 = getLossFunction('bce')(0.1)  # attention
-        # self.criterion4 = getLossFunction('smooth')(0.)
-
-        self.criterion0 = getLossFunction('fwse')(0.01)  # final pos
-        self.criterion1 = getLossFunction('fwse')(0.01)  # offset
-        self.criterion2 = getLossFunction('fwsekpt')(0.2)  # kpt
+        self.criterion0 = getLossFunction('fwrse')(0.1)  # final pos
+        self.criterion1 = getLossFunction('fwrse')(0.5)  # offset
+        self.criterion2 = getLossFunction('fwrse')(1)  # kpt
         self.criterion3 = getLossFunction('bce')(0.1)  # attention
-        self.criterion4 = getLossFunction('smooth')(0.)
+        self.criterion4 = getLossFunction('smooth')(0.1)
+
+        # self.criterion0 = getLossFunction('fwse')(0.01)  # final pos
+        # self.criterion1 = getLossFunction('fwse')(0.01)  # offset
+        # self.criterion2 = getLossFunction('fwsekpt')(0.2)  # kpt
+        # self.criterion3 = getLossFunction('bce')(0.1)  # attention
+        # self.criterion4 = getLossFunction('smooth')(0.1)
 
         self.metrics0 = getLossFunction('nme')(1.)
         self.metrics1 = getLossFunction('frse')(1.)
@@ -965,7 +967,10 @@ class TorchNet:
         # model.cuda()
 
         self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0001)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.5)
+        # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.5)
+        scheduler_exp = optim.lr_scheduler.ExponentialLR(self.optimizer, 0.8)
+        scheduler_warmup = GradualWarmupScheduler(self.optimizer, multiplier=8, total_epoch=3, after_scheduler=scheduler_exp)
+        self.scheduler = scheduler_warmup
 
     def buildAttentionPRN(self):
         self.model = AttentionPRN()
@@ -989,7 +994,10 @@ class TorchNet:
         # model.cuda()
 
         self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0001)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.5)
+        # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.5)
+        scheduler_exp = optim.lr_scheduler.ExponentialLR(self.optimizer, 0.8)
+        scheduler_warmup = GradualWarmupScheduler(self.optimizer, multiplier=8, total_epoch=3, after_scheduler=scheduler_exp)
+        self.scheduler = scheduler_warmup
 
     def buildSiamPRN(self):
 
