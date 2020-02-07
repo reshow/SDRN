@@ -2,6 +2,7 @@
 test light
 '''
 import os, sys
+os.environ['PYOPENGL_PLATFORM'] = 'egl'
 import numpy as np
 import scipy.io as sio
 from skimage import io
@@ -118,6 +119,48 @@ def renderLight(posmap, init_image=None, is_render=True):
 
     scene.clear()
     return color
+
+
+def renderCenter(posmap,is_render=True):
+    tex = np.ones((256, 256, 3)) / 2
+    mesh = UVmap2Mesh(posmap, tex, is_extra_triangle=False)
+    vertices = mesh['vertices']
+    triangles = mesh['triangles']
+    colors = mesh['colors'] / np.max(mesh['colors'])
+    file = 'tmp/light/test.obj'
+    write_obj_with_colors(file, vertices, triangles, colors)
+
+    obj = trimesh.load(file)
+    # obj.visual.vertex_colors = np.random.uniform(size=obj.vertices.shape)
+    obj.visual.face_colors = np.array([0.05, 0.1, 0.2])
+
+    mesh = pyrender.Mesh.from_trimesh(obj, smooth=False)
+
+    scene.add(mesh, pose=np.eye(4))
+
+    camera_pose = np.eye(4)
+    camera_pose[0, 3] = 0
+    camera_pose[1, 3] = 0
+    camera_pose[2, 3] = 300
+    camera = pyrender.OrthographicCamera(xmag=128, ymag=128, zfar=1000)
+
+    scene.add(camera, pose=camera_pose)
+    light = pyrender.DirectionalLight(color=[1.0, 1.0, 1.0], intensity=8.0)
+    scene.add(light, pose=camera_pose)
+    color, depth = r.render(scene)
+    if is_render:
+        plt.imshow(color)
+        plt.show()
+
+
+    fuse_img = color.copy()
+    if is_render:
+        plt.imshow(fuse_img)
+        plt.show()
+    scene.clear()
+    return fuse_img
+
+
 
 
 def plot_kpt(image, kpt, is_render=True, color_rate=0):

@@ -88,3 +88,9 @@
         
     11.12
         decay 0.0002 smooth0.0025
+        
+    
+    2.5
+    smooth0.1 SDRN   20:32
+    smooth0.25 RT    22:15
+    smooth0.025 qua  22:17

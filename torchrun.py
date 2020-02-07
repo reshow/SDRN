@@ -24,7 +24,7 @@ import random
 now_time = time.localtime()
 save_dir_time = '/' + str(now_time.tm_year) + '-' + str(now_time.tm_mon) + '-' + str(now_time.tm_mday) + '-' \
                 + str(now_time.tm_hour) + '-' + str(now_time.tm_min) + '-' + str(now_time.tm_sec)
-writer = SummaryWriter(log_dir='tmp' + save_dir_time)
+writer = SummaryWriter(log_dir='tmp2' + save_dir_time)
 
 
 class NetworkManager:
@@ -40,8 +40,8 @@ class NetworkManager:
         self.model_save_path = args.modelSavePath + save_dir_time
         if not os.path.exists(args.modelSavePath):
             os.mkdir(args.modelSavePath)
-        if not os.path.exists(self.model_save_path):
-            os.mkdir(self.model_save_path)
+        # if not os.path.exists(self.model_save_path):
+        #     os.mkdir(self.model_save_path)
 
         self.epoch = args.epoch
         self.start_epoch = args.startEpoch
@@ -67,14 +67,17 @@ class NetworkManager:
                           'SiamPRN': [4, self.net.buildSiamPRN, 'siam', 3, 2],
                           'MeanOffsetPRN': [3, self.net.buildMeanOffsetPRN, 'meanoffset', 4, 4],
                           'VisiblePRN': [5, self.net.buildVisiblePRN, 'visible', 4, 3],
-                          'SDRN': [5, self.net.buildSDRN, 'visible', 4, 3]}
+                          'SDRN': [5, self.net.buildSDRN, 'visible', 4, 3],
+                          'SRN': [5, self.net.buildSRN, 'visible', 4, 3]}
         self.mode = self.mode_dict['InitPRN']
+        self.net_structure = ''
 
     def buildModel(self, args):
         print('building', args.netStructure)
         if args.netStructure in self.mode_dict.keys():
             self.mode = self.mode_dict[args.netStructure]
             self.mode[1]()
+            self.net_structure = args.netStructure
         else:
             print('unknown network structure')
 
@@ -123,6 +126,8 @@ class NetworkManager:
         print('data path list loaded')
 
     def train(self):
+        if not os.path.exists(self.model_save_path):
+            os.mkdir(self.model_save_path)
         best_acc = 1000
         model = self.net.model
         optimizer = self.net.optimizer
@@ -516,8 +521,39 @@ class NetworkManager:
             fout.close()
 
     def testDemo(self, error_func_list=None, is_visualize=False):
+
+        save_img_dir = 'saved_img/' + save_dir_time +self.net_structure+ '/'
+        if not os.path.exists('saved_img'):
+            os.mkdir('saved_img')
+        if not os.path.exists(save_img_dir):
+            os.mkdir(save_img_dir)
+
+        def kpt2Rotation(kpt_src, kpt_dst):
+            A = kpt_src
+            B = kpt_dst
+            mu_A = A.mean(axis=0)
+            mu_B = B.mean(axis=0)
+            AA = A - mu_A
+            BB = B - mu_B
+            H = AA.T.dot(BB)
+            U, S, Vt = np.linalg.svd(H)
+            Rot = Vt.T.dot(U.T)
+            # if np.linalg.det(R) < 0:
+            #     print('singular R')
+            #     Vt[2, :] *= -1
+            #     R = Vt.T.dot(U.T)
+            transac = mu_B - mu_A.dot(Rot.T)
+            # tform = np.zeros((4, 4))
+            # tform[0:3, 0:3] = R
+            # tform[0:3, 3] = t
+            # tform[3, 3] = 1
+            return Rot, transac
+
+        from data import mean_posmap
+        norm_mean_posmap = mean_posmap * 8
+
         from loss import cp, uv_kpt
-        from demorender import demoAll, compareKpt
+        from demorender import demoAll, compareKpt, renderCenter
         total_task = len(self.test_data)
         print('total img:', total_task)
 
@@ -539,13 +575,19 @@ class NetworkManager:
                     y[j] = torch.unsqueeze(y[j], 0)
                 x = torch.unsqueeze(x, 0)
                 outputs = model(x, *y)
-
                 p = outputs[-1]
+
                 x = x.squeeze().cpu().numpy().transpose(1, 2, 0)
                 p = p.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
                 b = sio.loadmat(self.test_data[i].bbox_info_path)
                 gt_y = y[0]
                 gt_y = gt_y.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+
+                dst_kpt = norm_mean_posmap[uv_kpt[:, 0], uv_kpt[:, 1]]
+                src_kpt = p[uv_kpt[:, 0], uv_kpt[:, 1]]
+                R, T = kpt2Rotation(src_kpt, dst_kpt)
+                p_norm = p.dot(R.T) + T
+                p_norm[:, :, 1] = 256 - p_norm[:, :, 1]
 
                 # for PRN GT
                 # Tform = cp(p[uv_kpt[:, 0], uv_kpt[:, 1], :], gt_y[uv_kpt[:, 0], uv_kpt[:, 1], :])
@@ -557,21 +599,25 @@ class NetworkManager:
                     error = error_func(gt_y, p, b['Bbox'], b['Kpt'])
                     temp_errors.append(error)
                 total_error_list.append(temp_errors)
-                print(self.test_data[i].init_image_path, end='  ')
+                print(i,self.test_data[i].init_image_path, end='  ')
                 for er in temp_errors:
                     print('%.5f' % er, end=' ')
                 print('')
                 if is_visualize:
-                    if temp_errors[0] >= 0.06:
+                    if temp_errors[0] >= 0.00:
                         demobg = np.load(self.test_data[i].cropped_image_path).astype(np.float32)
                         init_image = demobg / 255.0
 
                         img1, img2 = demoAll(p, demobg, is_render=False)
-                        io.imsave('tmp/light/' + str(i) + '_shape.jpg', img1)
-                        io.imsave('tmp/light/' + str(i) + '_kpt.jpg', img2)
-                        io.imsave('tmp/light/' + str(i) + '_init.jpg', init_image)
-                        # img1 = compareKpt(p, gt_y, demobg, is_render=False)
-                        # io.imsave('tmp/light/' + str(i) + 'compare.jpg', img1)
+                        io.imsave(save_img_dir + str(i) + '_shape.jpg', img1)
+                        io.imsave(save_img_dir + str(i) + '_kpt.jpg', img2.astype(np.uint8))
+                        io.imsave(save_img_dir + str(i) + '_init.jpg', (init_image*255).astype(np.uint8))
+
+                        img1 = compareKpt(p, gt_y, demobg, is_render=False)
+                        io.imsave(save_img_dir + str(i) + 'compare.jpg', img1.astype(np.uint8))
+
+                        img3 = renderCenter(p_norm, is_render=False)
+                        io.imsave(save_img_dir + str(i) + 'norm.jpg', img3)
                     # diff = np.square(gt_y - p) * masks.face_mask_np3d
                     # dist2d = np.sqrt(np.sum(diff[:, :, 0:2], axis=-1))
                     # dist2d[0, 0] = 30.0
@@ -579,7 +625,7 @@ class NetworkManager:
                     # dist3d[0, 0] = 30.0
                     # dist3 = np.sqrt(diff[:, :, 2])
                     # dist3[0, 0] = 30.0
-                    # visibility = np.load(self.test_data[i].attention_mask_path.replace('attention', 'visibility')).astype(np.float32)
+                    # # visibility = np.load(self.test_data[i].attention_mask_path.replace('attention', 'visibility')).astype(np.float32)
                     #
                     # plt.subplot(2, 3, 1)
                     # plt.imshow(init_image)
@@ -590,8 +636,8 @@ class NetworkManager:
                     # plt.subplot(2, 3, 4)
                     # plt.imshow(dist3)
                     # plt.subplot(2, 3, 5)
-                    # plt.imshow(visibility)
-                    # plt.show()
+                    # # plt.imshow(visibility)
+                    # # plt.show()
                     #
                     # tex = np.load(self.test_data[i].texture_path.replace('zeroz2', 'full')).astype(np.float32)
                     # init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
@@ -638,11 +684,11 @@ class NetworkManager:
                 torch.cuda.synchronize()
                 begin_time = time.time()
 
-                model(x, *y,is_speed_test=True)
+                model(x, *y, is_speed_test=True)
                 torch.cuda.synchronize()
                 end_time = time.time()
                 total_time = total_time + end_time - begin_time
-                print(i + 1, total_time / (i + 1),end_time-begin_time)
+                print(i + 1, total_time / (i + 1), end_time - begin_time)
 
                 # for PRN GT
                 # Tform = cp(p[uv_kpt[:, 0], uv_kpt[:, 1], :], gt_y[uv_kpt[:, 0], uv_kpt[:, 1], :])

@@ -457,6 +457,31 @@ class VisibleRebuildModule(nn.Module):
         return outpos
 
 
+class VisibleRebuildModuleNoOffset(nn.Module):
+    def __init__(self):
+        super(VisibleRebuildModuleNoOffset, self).__init__()
+        revert_opetator = np.array([[1., -1., 1.], [1., -1., 1.], [1., -1., 1.]]).astype(np.float32)
+        self.revert_operator = nn.Parameter(torch.from_numpy(revert_opetator))
+        self.revert_operator.requires_grad = False
+
+    def forward(self, Offset, Posmap_kpt, is_torch=False):
+        offsetmap = Offset
+        offsetmap = offsetmap.permute(0, 2, 3, 1)
+        kptmap = Posmap_kpt.permute(0, 2, 3, 1)
+        outpos = torch.zeros((Offset.shape[0], 65536, 3), device=Offset.device)
+        kpt_dst = kptmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
+        kpt_src = offsetmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
+        offsetmap = offsetmap.reshape((Offset.shape[0], 65536, 3))
+
+        for i in range(Offset.shape[0]):
+            R, T = kpt2Tform(kpt_src[i], kpt_dst[i])
+            outpos[i] = offsetmap[i].mm(R.permute(1, 0)) + T
+
+        outpos = outpos.reshape((Offset.shape[0], 256, 256, 3))
+        outpos = outpos.permute(0, 3, 1, 2)
+        return outpos
+
+
 class Flatten(nn.Module):
     def __init__(self):
         super(Flatten, self).__init__()
