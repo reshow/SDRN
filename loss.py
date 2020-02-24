@@ -11,7 +11,7 @@ from icp import icp
 weight_mask_np = io.imread('uv-data/uv_weight_mask.png').astype(float)
 weight_mask_np[weight_mask_np == 255] = 256
 weight_mask_np = weight_mask_np / 16
-weight_mask_np[weight_mask_np == 4]=12
+weight_mask_np[weight_mask_np == 4] = 12
 
 weight_mask = torch.from_numpy(weight_mask_np)
 face_mask = torch.from_numpy(face_mask_np)

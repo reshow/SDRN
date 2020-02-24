@@ -46,10 +46,10 @@ class Conv2d_BN_AC(nn.Module):
 
 
 class ConvTranspose2d_BN_AC(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, activation=nn.ReLU(inplace=True)):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, activation=nn.ReLU(inplace=True),bias=False):
         super(ConvTranspose2d_BN_AC, self).__init__()
         self.deconv = nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels,
-                                         kernel_size=kernel_size, stride=stride, padding=(kernel_size - 1) // 2, output_padding=stride - 1, bias=False)
+                                         kernel_size=kernel_size, stride=stride, padding=(kernel_size - 1) // 2, output_padding=stride - 1, bias=bias)
 
         self.BN_AC = nn.Sequential(
             nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.5),
@@ -444,8 +444,10 @@ class VisibleRebuildModule(nn.Module):
         offsetmap = offsetmap.permute(0, 2, 3, 1)
         kptmap = Posmap_kpt.permute(0, 2, 3, 1)
         outpos = torch.zeros((Offset.shape[0], 65536, 3), device=Offset.device)
-        kpt_dst = kptmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
-        kpt_src = offsetmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
+        # uv_kpt2 = uv_kpt[17:]
+        uv_kpt2=uv_kpt
+        kpt_dst = kptmap[:, uv_kpt2[:, 0], uv_kpt2[:, 1]]
+        kpt_src = offsetmap[:, uv_kpt2[:, 0], uv_kpt2[:, 1]]
         offsetmap = offsetmap.reshape((Offset.shape[0], 65536, 3))
 
         for i in range(Offset.shape[0]):

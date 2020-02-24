@@ -913,7 +913,7 @@ class SDRN(nn.Module):
         kpt_posmap = self.decoder_kpt(f)
 
         if is_rebuild:
-            posmap = self.rebuilder(offset, kpt_posmap)
+            posmap = self.rebuilder(offset, gt_posmap)
         else:
             if self.training:
                 posmap = gt_posmap.clone()
@@ -964,7 +964,7 @@ class SRN(nn.Module):
             ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=feature_size * 1, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1),
-            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Tanh()))
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Tanh(),bias=True))
         self.decoder_kpt = nn.Sequential(
             ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1),  # 8 x 8 x 512
             ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 16, kernel_size=4, stride=2),  # 16 x 16 x 256
@@ -1006,7 +1006,6 @@ class SRN(nn.Module):
         f = self.block10(f)
         x_new = f.detach()
         offset = self.decoder(x_new)
-        offset = offset * 20
 
         kpt_posmap = self.decoder_kpt(f)
 
@@ -1018,7 +1017,7 @@ class SRN(nn.Module):
             else:
                 posmap = self.rebuilder(offset, kpt_posmap)
 
-        new_gt_offset = gt_offset * self.offset_scale + self.mean_posmap_tensor
+        new_gt_offset = (gt_offset * self.offset_scale + self.mean_posmap_tensor)/20.0
         loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention = self.loss(posmap, offset, kpt_posmap, attention, gt_posmap, new_gt_offset,
                                                                                          gt_attention)
         return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, posmap
@@ -1043,7 +1042,7 @@ class TorchNet:
 
     def buildInitPRN(self):
 
-        self.model = InitPRN()
+        self.model = InitPRN2()
 
         if self.gpu_num > 1:
             self.model = nn.DataParallel(self.model, device_ids=self.visible_devices)

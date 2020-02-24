@@ -522,7 +522,7 @@ class NetworkManager:
 
     def testDemo(self, error_func_list=None, is_visualize=False):
 
-        save_img_dir = 'saved_img/' + save_dir_time +self.net_structure+ '/'
+        save_img_dir = 'saved_img/' + save_dir_time + self.net_structure + '/'
         if not os.path.exists('saved_img'):
             os.mkdir('saved_img')
         if not os.path.exists(save_img_dir):
@@ -566,6 +566,11 @@ class NetworkManager:
         with torch.no_grad():
             model.eval()
             for i in range(len(self.test_data)):
+                specific_list = [157, 285, 319, 574, 630, 835, 1300]
+                # specific_list = [1300]
+                if i not in specific_list:
+                    continue
+
                 data = data_generator.__getitem__(i)
                 x = data[0]
                 x = x.to(self.net.device).float()
@@ -599,7 +604,7 @@ class NetworkManager:
                     error = error_func(gt_y, p, b['Bbox'], b['Kpt'])
                     temp_errors.append(error)
                 total_error_list.append(temp_errors)
-                print(i,self.test_data[i].init_image_path, end='  ')
+                print(i, self.test_data[i].init_image_path, end='  ')
                 for er in temp_errors:
                     print('%.5f' % er, end=' ')
                 print('')
@@ -611,7 +616,7 @@ class NetworkManager:
                         img1, img2 = demoAll(p, demobg, is_render=False)
                         io.imsave(save_img_dir + str(i) + '_shape.jpg', img1)
                         io.imsave(save_img_dir + str(i) + '_kpt.jpg', img2.astype(np.uint8))
-                        io.imsave(save_img_dir + str(i) + '_init.jpg', (init_image*255).astype(np.uint8))
+                        io.imsave(save_img_dir + str(i) + '_init.jpg', (init_image * 255).astype(np.uint8))
 
                         img1 = compareKpt(p, gt_y, demobg, is_render=False)
                         io.imsave(save_img_dir + str(i) + 'compare.jpg', img1.astype(np.uint8))
