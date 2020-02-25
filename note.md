@@ -94,3 +94,10 @@
     smooth0.1 SDRN   20:32
     smooth0.25 RT    22:15
     smooth0.025 qua  22:17
+    
+    2.25
+    加了新的augmentation
+    fintune  15:32
+    SDRNv2 二阶导当loss 15:45
+    SDRN 在mcg03上
+    

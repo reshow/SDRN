@@ -101,10 +101,10 @@ def gaussNoise(x, mean=0, var=0.001):
 
 @numba.jit()
 def distortion(x):
-    marginx1 = np.random.rand() * 0.16-0.08
-    marginy1 = np.random.rand() * 0.16-0.08
-    marginx2 = np.random.rand() * 0.16-0.08
-    marginy2 = np.random.rand() * 0.16-0.08
+    marginx1 = np.random.rand() * 0.16 - 0.08
+    marginy1 = np.random.rand() * 0.16 - 0.08
+    marginx2 = np.random.rand() * 0.16 - 0.08
+    marginy2 = np.random.rand() * 0.16 - 0.08
     height = len(x)
     width = len(x[0])
     out = np.zeros((height, width))
@@ -207,6 +207,42 @@ def randomMaskErase(x, attention, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 /
     return out, out_attention
 
 
+def randomMaskReserve(x, attention, s_l=0.1, s_h=0.5, r_1=0.6, r_2=1 / 0.6, v_l=0, v_h=1.0):
+    [img_h, img_w, img_c] = x.shape
+    out = x.copy()
+    out_attention = attention.copy()
+    num = np.random.randint(1, 4)
+
+    for i in range(num):
+        s = np.random.uniform(s_l, s_h) * img_h * img_w
+        r = np.random.uniform(r_1, r_2)
+        w = int(np.sqrt(s / r))
+        h = int(np.sqrt(s * r))
+        centerx = np.random.randint(img_w // 5 * 2, img_w // 5 * 3)
+        centery = np.random.randint(img_h // 5 * 2, img_h // 5 * 3)
+
+        mask = np.zeros((img_h, img_w))
+        mask[centery - h // 2:min(centery + h // 2, img_h), centerx - w // 2:min(centerx + w // 2, img_w)] = 1
+        mask = distortion(mask)
+        if np.random.rand() < 0.25:
+            out_attention[mask == 0] = 0
+            c = 0
+            out[mask == 0] = c
+        else:
+            out_attention[mask == 0] = 0
+            c0 = np.random.uniform(v_l, v_h)
+            c1 = np.random.uniform(v_l, v_h)
+            c2 = np.random.uniform(v_l, v_h)
+            out0 = out[:, :, 0]
+            out0[mask == 0] = c0
+            out1 = out[:, :, 1]
+            out1[mask == 0] = c1
+            out2 = out[:, :, 2]
+            out2[mask == 0] = c2
+
+    return out, out_attention
+
+
 def channelScale(x, min_rate=0.6, max_rate=1.4):
     out = x.copy()
     for i in range(3):
@@ -245,6 +281,8 @@ def attentionAugment_torch(x, y, attention, is_rotate=True):
         x, attention = randomMaskErase(x, attention)
     if np.random.rand() > 0.5:
         x = channelScale(x)
+    if np.random.rand() > 0.95:
+        x, attention = randomMaskReserve(x, attention)
     # if np.random.rand() > 0.9:
     #     x = gaussNoise(x)
     return x, y, attention

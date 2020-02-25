@@ -103,6 +103,8 @@ class NetworkManager:
                           'MeanOffsetPRN': [3, self.net.buildMeanOffsetPRN, 'meanoffset', 4, 4],
                           'VisiblePRN': [5, self.net.buildVisiblePRN, 'visible', 4, 3],
                           'SDRN': [5, self.net.buildSDRN, 'visible', 4, 3],
+                          'SDRNv2': [5, self.net.buildSDRNv2, 'visible', 4, 3],
+                          'FinetuneSDRN': [5, self.net.buildFinetuneSDRN, 'visible', 4, 3],
                           'SRN': [5, self.net.buildSRN, 'visible', 4, 3]}
         self.mode = self.mode_dict['InitPRN']
 
@@ -396,16 +398,18 @@ if __name__ == '__main__':
 
     os.environ["CUDA_VISIBLE_DEVICES"] = run_args.visibleDevice
     print(torch.cuda.is_available(), torch.cuda.device_count(), torch.cuda.current_device(), torch.cuda.get_device_name(0))
-    writer = SummaryWriter(log_dir='tmp' + save_dir_time)
+
     save_dir_time = save_dir_time + run_args.netStructure
     net_manager = NetworkManager(run_args)
     net_manager.buildModel(run_args)
     if run_args.isTrain:
+        writer = SummaryWriter(log_dir='tmp' + save_dir_time)
         for dir in run_args.valDataDir:
             net_manager.addImageData(dir, 'val')
         if run_args.loadModelPath is not None:
             net_manager.net.loadWeights(run_args.loadModelPath)
         net_manager.train()
+        writer.close()
 
     if run_args.isTest:
         for dir in run_args.testDataDir:
@@ -414,4 +418,4 @@ if __name__ == '__main__':
             net_manager.net.loadWeights(run_args.loadModelPath)
             net_manager.test(error_func_list=run_args.errorFunction, is_visualize=run_args.isVisualize)
 
-    writer.close()
+

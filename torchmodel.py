@@ -913,7 +913,7 @@ class SDRN(nn.Module):
         kpt_posmap = self.decoder_kpt(f)
 
         if is_rebuild:
-            posmap = self.rebuilder(offset, gt_posmap)
+            posmap = self.rebuilder(offset, kpt_posmap)
         else:
             if self.training:
                 posmap = gt_posmap.clone()
@@ -964,7 +964,7 @@ class SRN(nn.Module):
             ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=feature_size * 1, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1),
-            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Tanh(),bias=True))
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Tanh(), bias=True))
         self.decoder_kpt = nn.Sequential(
             ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1),  # 8 x 8 x 512
             ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 16, kernel_size=4, stride=2),  # 16 x 16 x 256
@@ -1017,10 +1017,68 @@ class SRN(nn.Module):
             else:
                 posmap = self.rebuilder(offset, kpt_posmap)
 
-        new_gt_offset = (gt_offset * self.offset_scale + self.mean_posmap_tensor)/20.0
+        new_gt_offset = (gt_offset * self.offset_scale + self.mean_posmap_tensor) / 20.0
         loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention = self.loss(posmap, offset, kpt_posmap, attention, gt_posmap, new_gt_offset,
                                                                                          gt_attention)
         return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, posmap
+
+
+class FinetuneSDRNLoss(SDNLoss):
+    def __init__(self):
+        super(FinetuneSDRNLoss, self).__init__()
+
+    def forward(self, posmap, offset, kpt_posmap, mask,
+                gt_posmap, gt_offset, gt_mask):
+        loss_offset = self.criterion1(gt_offset, offset)
+        loss_smooth = self.criterion4(offset)
+        loss = loss_offset + loss_smooth
+
+        metrics_posmap = self.metrics0(gt_posmap, posmap)
+        metrics_offset = self.metrics1(gt_offset, offset)
+        metrics_kpt = self.metrics2(gt_posmap, kpt_posmap)
+        metrics_attention = self.metrics3(gt_mask, mask)
+        return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention
+
+
+class FinetuneSDRN(SDRN):
+    def __init__(self):
+        super(FinetuneSDRN, self).__init__()
+        self.loss = FinetuneSDRNLoss()
+
+
+class SDNLossv2(SDNLoss):
+    def __init__(self):
+        super(SDNLoss, self).__init__()
+        self.criterion0 = getLossFunction('fwrse')(0.1)  # final pos
+        self.criterion1 = getLossFunction('fwrse')(0.5)  # offset
+        self.criterion2 = getLossFunction('fwrse')(1)  # kpt
+        self.criterion3 = getLossFunction('bce')(0.1)  # attention
+        self.criterion4 = getLossFunction('2nd')(0.05)
+        self.metrics0 = getLossFunction('nme')(1.)
+        self.metrics1 = getLossFunction('frse')(1.)
+        self.metrics2 = getLossFunction('kptc')(1.)
+        self.metrics3 = getLossFunction('mae')(1.)
+
+    def forward(self, posmap, offset, kpt_posmap, mask,
+                gt_posmap, gt_offset, gt_mask):
+        loss_posmap = self.criterion0(gt_posmap, posmap)
+        loss_offset = self.criterion1(gt_offset, offset)
+        loss_kpt = self.criterion2(gt_posmap, kpt_posmap)
+        loss_mask = self.criterion3(gt_mask, mask)
+        loss_smooth = self.criterion4(gt_offset, offset)
+        loss = loss_offset + loss_kpt + loss_posmap + loss_mask + loss_smooth
+
+        metrics_posmap = self.metrics0(gt_posmap, posmap)
+        metrics_offset = self.metrics1(gt_offset, offset)
+        metrics_kpt = self.metrics2(gt_posmap, kpt_posmap)
+        metrics_attention = self.metrics3(gt_mask, mask)
+        return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention
+
+
+class SDRNv2(SDRN):
+    def __init__(self):
+        super(SDRNv2, self).__init__()
+        self.loss = SDNLossv2()
 
 
 class TorchNet:
@@ -1154,6 +1212,32 @@ class TorchNet:
 
     def buildSRN(self):
         self.model = SRN()
+
+        if self.gpu_num > 1:
+            self.model = nn.DataParallel(self.model, device_ids=self.visible_devices)
+        self.model.to(self.device)
+        # model.cuda()
+
+        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
+        scheduler_exp = optim.lr_scheduler.ExponentialLR(self.optimizer, 0.8)
+        scheduler_warmup = GradualWarmupScheduler(self.optimizer, multiplier=8, total_epoch=3, after_scheduler=scheduler_exp)
+        self.scheduler = scheduler_warmup
+
+    def buildFinetuneSDRN(self):
+        self.model = FinetuneSDRN()
+
+        if self.gpu_num > 1:
+            self.model = nn.DataParallel(self.model, device_ids=self.visible_devices)
+        self.model.to(self.device)
+        # model.cuda()
+
+        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
+        scheduler_exp = optim.lr_scheduler.ExponentialLR(self.optimizer, 0.8)
+        scheduler_warmup = GradualWarmupScheduler(self.optimizer, multiplier=8, total_epoch=3, after_scheduler=scheduler_exp)
+        self.scheduler = scheduler_exp
+
+    def buildSDRNv2(self):
+        self.model = SDRNv2()
 
         if self.gpu_num > 1:
             self.model = nn.DataParallel(self.model, device_ids=self.visible_devices)

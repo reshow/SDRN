@@ -150,6 +150,36 @@ def SmoothLoss():
     return TemplateLoss
 
 
+def SecondOrderLoss():
+    class TemplateLoss(nn.Module):
+        def __init__(self, rate=1.0):
+            super(TemplateLoss, self).__init__()
+            self.rate = rate
+            kernel = np.array([[0, -1, 0],
+                               [-1, 4, -1],
+                               [0, -1, 0]])
+            kernel = torch.from_numpy(kernel).float()
+            kernel = kernel.unsqueeze(0)
+            kernel = torch.stack([kernel, kernel, kernel])
+            self.kernel = nn.Parameter(kernel)
+            self.kernel.requires_grad = False
+            self.face_mask = nn.Parameter(face_mask.clone())
+            self.face_mask.requires_grad = False
+
+        def forward(self, y_true, y_pred):
+            foreface_pred = y_pred * self.face_mask
+            diff_pred = F.conv2d(foreface_pred, self.kernel, padding=1, groups=3)
+            foreface_true = y_true * self.face_mask
+            diff_true = F.conv2d(foreface_true, self.kernel, padding=1, groups=3)
+            diff = diff_pred - diff_true
+            # dist = torch.sqrt(torch.sum(diff ** 2, 1))
+            dist = torch.norm(diff, dim=1)
+            loss = torch.mean(dist)
+            return loss * self.rate
+
+    return TemplateLoss
+
+
 def MaskLoss():
     class TemplateLoss(nn.Module):
         def __init__(self, rate=1.0):
@@ -216,6 +246,8 @@ def getLossFunction(loss_func_name='SquareError'):
         return MaskLoss()
     elif loss_func_name == 'smooth':
         return SmoothLoss()
+    elif loss_func_name == '2nd':
+        return SecondOrderLoss()
     elif loss_func_name == 'kpt':
         return KptLoss()
     elif loss_func_name == 'kptc':

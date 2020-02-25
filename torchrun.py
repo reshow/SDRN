@@ -68,6 +68,8 @@ class NetworkManager:
                           'MeanOffsetPRN': [3, self.net.buildMeanOffsetPRN, 'meanoffset', 4, 4],
                           'VisiblePRN': [5, self.net.buildVisiblePRN, 'visible', 4, 3],
                           'SDRN': [5, self.net.buildSDRN, 'visible', 4, 3],
+                          'SDRNv2': [5, self.net.buildSDRNv2, 'visible', 4, 3],
+                          'FinetuneSDRN': [5, self.net.buildFinetuneSDRN, 'visible', 4, 3],
                           'SRN': [5, self.net.buildSRN, 'visible', 4, 3]}
         self.mode = self.mode_dict['InitPRN']
         self.net_structure = ''
