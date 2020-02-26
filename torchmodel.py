@@ -1049,7 +1049,7 @@ class FinetuneSDRN(SDRN):
 class SDNLossv2(SDNLoss):
     def __init__(self):
         super(SDNLoss, self).__init__()
-        self.criterion0 = getLossFunction('fwrse')(0.1)  # final pos
+        self.criterion0 = getLossFunction('fwrse')(0)  # final pos
         self.criterion1 = getLossFunction('fwrse')(0.5)  # offset
         self.criterion2 = getLossFunction('fwrse')(1)  # kpt
         self.criterion3 = getLossFunction('bce')(0.1)  # attention

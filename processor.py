@@ -272,10 +272,10 @@ class DataProcessor:
         #     cropped_image = unchangeAugment(cropped_image)
         # cropped_image = gaussNoise(cropped_image)
         # 5. save files
+        attention_mask = getImageAttentionMask(cropped_image, uv_position_map)
+        np.save(self.write_dir + '/' + self.image_name + '_attention_mask.npy', attention_mask.astype(np.uint8))
         if self.is_augment:
-            attention_mask = getImageAttentionMask(cropped_image, uv_position_map)
             visibility_mask = getVisibilityMask(uv_position_map, cropped_image.shape)
-            np.save(self.write_dir + '/' + self.image_name + '_attention_mask.npy', attention_mask.astype(np.uint8))
             np.save(self.write_dir + '/' + self.image_name + '_visibility_mask.npy', visibility_mask.astype(np.uint8))
 
         sio.savemat(self.write_dir + '/' + self.image_name + '_bbox_info.mat',

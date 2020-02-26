@@ -97,7 +97,7 @@
     
     2.25
     加了新的augmentation
-    fintune  15:32
-    SDRNv2 二阶导当loss 15:45
-    SDRN 在mcg03上
+    finetune  2e-5 1e-3学习率
+    SDRNv2 二阶导当loss 取消整体loss
+    SDRN 在mcg03上 把kptloss改成只计算kpt处
     

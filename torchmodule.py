@@ -46,7 +46,7 @@ class Conv2d_BN_AC(nn.Module):
 
 
 class ConvTranspose2d_BN_AC(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, activation=nn.ReLU(inplace=True),bias=False):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, activation=nn.ReLU(inplace=True), bias=False):
         super(ConvTranspose2d_BN_AC, self).__init__()
         self.deconv = nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels,
                                          kernel_size=kernel_size, stride=stride, padding=(kernel_size - 1) // 2, output_padding=stride - 1, bias=bias)
@@ -418,6 +418,32 @@ def kpt2Tform(kpt_src, kpt_dst):
     return R * sum_dist2 / sum_dist1, t
 
 
+def kpt2TformWeighted(kpt_src, kpt_dst):
+    center_list = [36, 39, 42, 45, 30, 31, 35, 48, 54, 0, 8, 16]
+    W = torch.eye(68, device=kpt_src.device)
+    shallow_kpt_args = torch.argsort(kpt_dst[:, 2])[30:]
+    W[shallow_kpt_args, shallow_kpt_args] *= 2
+    W[center_list, center_list] *= 40
+
+    sum_dist1 = torch.sum(torch.norm(kpt_src - kpt_src[0], dim=1))
+    sum_dist2 = torch.sum(torch.norm(kpt_dst - kpt_dst[0], dim=1))
+    A = kpt_src * sum_dist2 / sum_dist1
+    B = kpt_dst
+    mu_A = A.mean(dim=0)
+    mu_B = B.mean(dim=0)
+    AA = A - mu_A
+    BB = B - mu_B
+    H = AA.permute(1, 0).mm(W).mm(BB)
+    U, S, V = torch.svd(H)
+    R = V.mm(U.permute(1, 0))
+    # if torch.det(R) < 0:
+    #     print('singular R')
+    #     V[1,:] *= -1
+    #     R = V.mm(U.permute(1, 0))
+    t = torch.mean(B - A.mm(R.permute(1, 0)), dim=0)
+    return R * sum_dist2 / sum_dist1, t
+
+
 def kpt2Tform_notorch(kpt_src, kpt_dst):
     kpt_src_np = kpt_src.detach().cpu().numpy()
     kpt_dst_np = kpt_dst.detach().cpu().numpy()
@@ -445,13 +471,15 @@ class VisibleRebuildModule(nn.Module):
         kptmap = Posmap_kpt.permute(0, 2, 3, 1)
         outpos = torch.zeros((Offset.shape[0], 65536, 3), device=Offset.device)
         # uv_kpt2 = uv_kpt[17:]
-        uv_kpt2=uv_kpt
+        uv_kpt2 = uv_kpt
         kpt_dst = kptmap[:, uv_kpt2[:, 0], uv_kpt2[:, 1]]
         kpt_src = offsetmap[:, uv_kpt2[:, 0], uv_kpt2[:, 1]]
         offsetmap = offsetmap.reshape((Offset.shape[0], 65536, 3))
 
         for i in range(Offset.shape[0]):
             R, T = kpt2Tform(kpt_src[i], kpt_dst[i])
+            # R, T = kpt2TformWeighted(kpt_src[i], kpt_dst[i])
+
             outpos[i] = offsetmap[i].mm(R.permute(1, 0)) + T
 
         outpos = outpos.reshape((Offset.shape[0], 256, 256, 3))

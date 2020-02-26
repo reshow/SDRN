@@ -86,6 +86,7 @@ class NetworkManager:
     def addImageData(self, data_dir, add_mode='train', split_rate=0.8):
         all_data = []
         for root, dirs, files in os.walk(data_dir):
+            dirs.sort()  # keep order in linux
             for dir_name in dirs:
                 image_name = dir_name
                 if not os.path.exists(root + '/' + dir_name + '/' + image_name + '_cropped.jpg'):
@@ -295,7 +296,7 @@ class NetworkManager:
                 print(self.test_data[i].init_image_path, end='  ')
                 for er in temp_errors:
                     print('%.5f' % er, end=' ')
-                print('')
+                print(i)
                 if is_visualize:
                     init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
                     plt.axis('off')
@@ -348,14 +349,14 @@ class NetworkManager:
         from data import matrix2Angle
         total_task = len(self.test_data)
         print('total img:', total_task)
-        error_func_list = ['landmark2d', 'landmark3d', 'nme2d', 'nme3d', 'icp']
+        error_func_list = ['landmark2d', 'landmark3d', 'nme2d', 'nme3d']  # , 'icp']
         model = self.net.model
         total_error_list = []
         num_output = self.mode[3]
         num_input = self.mode[4]
         data_generator = DataGenerator(all_image_data=self.test_data, mode=self.mode[2], is_aug=False, is_pre_read=self.is_pre_read)
 
-        pose_list = np.load('data/AFLW2000-3D-new.pose.npy')
+        pose_list = np.load('data/AFLW2000-3D.pose.npy')
         angle_arg = [[], [], []]  # [0,30]  [30,60]  [60,90]
 
         with torch.no_grad():
