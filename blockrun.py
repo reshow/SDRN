@@ -105,6 +105,7 @@ class NetworkManager:
                           'SDRN': [5, self.net.buildSDRN, 'visible', 4, 3],
                           'SDRNv2': [5, self.net.buildSDRNv2, 'visible', 4, 3],
                           'FinetuneSDRN': [5, self.net.buildFinetuneSDRN, 'visible', 4, 3],
+                          'FinetuneKPT': [5, self.net.buildFinetuneKPT, 'kpt', 4, 3],
                           'SRN': [5, self.net.buildSRN, 'visible', 4, 3]}
         self.mode = self.mode_dict['InitPRN']
 
@@ -417,5 +418,3 @@ if __name__ == '__main__':
         if run_args.loadModelPath is not None:
             net_manager.net.loadWeights(run_args.loadModelPath)
             net_manager.test(error_func_list=run_args.errorFunction, is_visualize=run_args.isVisualize)
-
-

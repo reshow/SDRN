@@ -15,6 +15,7 @@ from data import bfm2Mesh, mesh2UVmap, UVmap2Mesh, renderMesh, getTransformMatri
 from augmentation import getRotateMatrix, getRotateMatrix3D
 from numpy.linalg import inv
 from masks import getImageAttentionMask, getVisibilityMask
+import torchfile
 
 
 class DataProcessor:
@@ -309,6 +310,58 @@ class DataProcessor:
         #     self.runPosmap()
         self.clear()
 
+    def runLS3D(self, image_path, output_dir):
+        if os.path.exists(image_path.replace('.jpg', '.t7')):
+            self.initialize(image_path, output_dir)
+            kpt = torchfile.load(self.image_path.replace('.jpg', '.t7'))
+        elif os.path.exists(image_path.replace('.png', '.t7')):
+            return
+            self.initialize(image_path, output_dir)
+            kpt = torchfile.load(self.image_path.replace('.png', '.t7'))
+        else:
+            print('\nnot exist', image_path, image_path.replace('.jpg', '.t7'), '\n')
+            return
+
+        if kpt.shape[1] != 2:
+            print('error not 2d kpt\n\n', image_path)
+        [left, top, right, bottom] = self.getBbox(kpt)
+        old_bbox = np.array([[left, top], [right, bottom]])
+
+        # 3.2 add margin to bbox
+        [center, size] = self.getCropBox([left, top, right, bottom])
+
+        # 3.3 crop and record the transform parameters
+        [crop_h, crop_w, _] = default_cropped_image_shape
+
+        T_3d = np.zeros((4, 4))
+        T_3d[0, 0] = crop_w / size
+        T_3d[1, 1] = crop_h / size
+        T_3d[2, 2] = crop_w / size
+        T_3d[3, 3] = 1.
+
+        T_3d[0:3, 3] = [(size / 2 - center[0]) * crop_w / size, (size / 2 - center[1]) * crop_h / size, 0]
+
+        T_2d = np.zeros((3, 3))
+        T_2d[0:2, 0:2] = T_3d[0:2, 0:2]
+        T_2d[2, 2] = 1.
+        T_2d[0:2, 2] = T_3d[0:2, 3]
+
+        T_2d_inv = inv(T_2d)
+        cropped_image = skimage.transform.warp(self.init_image, T_2d_inv, output_shape=(crop_h, crop_w))
+
+        kpt3d = np.concatenate((kpt, np.ones((68, 1))), axis=-1)
+        new_kpt = kpt3d.dot(T_2d.T)[:, 0:2]
+
+        [left, top, right, bottom] = self.getBbox(new_kpt)
+        bbox = np.array([[left, top], [right, bottom]])
+
+        sio.savemat(self.write_dir + '/' + self.image_name + '_bbox_info.mat',
+                    {'OldBbox': old_bbox, 'Bbox': bbox, 'Tform': T_2d.astype(np.float32), 'TformInv': T_2d_inv.astype(np.float32),
+                     'Tform3d': T_3d.astype(np.float32), 'Kpt': new_kpt, 'OldKpt': kpt,
+                     'TformOffset': T_3d.astype(np.float32)})
+        io.imsave(self.write_dir + '/' + self.image_name + '_cropped.jpg', (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
+        np.save(self.write_dir + '/' + self.image_name + '_cropped.npy', (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
+
     def clear(self):
         self.image_file_name = ''
         self.image_name = ''
@@ -330,11 +383,19 @@ def workerProcess(image_paths, output_dirs, worker_id, worker_conf):
     data_processor = DataProcessor(bbox_extend_rate=worker_conf.bboxExtendRate, marg_rate=worker_conf.margin, is_pt3d=worker_conf.isOldKpt,
                                    is_visualize=worker_conf.isVisualize, is_full_image=worker_conf.isFull, is_augment=worker_conf.isAugment,
                                    is_offset=worker_conf.isOffset, is_zero_z=worker_conf.isZeroZ)
-    for i in range(len(image_paths)):
-        # print('\r worker ' + str(id) + ' task ' + str(i) + '/' + str(len(image_paths)) +''+  image_paths[i])
-        print("worker {} task {}/{}  {}\r".format(str(worker_id), str(i), str(len(image_paths)), image_paths[i]), end='')
-        # output_list[id] = "worker {} task {}/{}  {}".format(str(id), str(i), str(len(image_paths)), image_paths[i])
-        data_processor.processImage(image_paths[i], output_dirs[i])
+    if worker_conf.isLS3D:
+
+        for i in range(len(image_paths)):
+            # print('\r worker ' + str(id) + ' task ' + str(i) + '/' + str(len(image_paths)) +''+  image_paths[i])
+            print("worker {} task {}/{}  {}\r".format(str(worker_id), str(i), str(len(image_paths)), image_paths[i]), end='')
+            # output_list[id] = "worker {} task {}/{}  {}".format(str(id), str(i), str(len(image_paths)), image_paths[i])
+            data_processor.runLS3D(image_paths[i], output_dirs[i])
+    else:
+        for i in range(len(image_paths)):
+            # print('\r worker ' + str(id) + ' task ' + str(i) + '/' + str(len(image_paths)) +''+  image_paths[i])
+            print("worker {} task {}/{}  {}\r".format(str(worker_id), str(i), str(len(image_paths)), image_paths[i]), end='')
+            # output_list[id] = "worker {} task {}/{}  {}".format(str(id), str(i), str(len(image_paths)), image_paths[i])
+            data_processor.processImage(image_paths[i], output_dirs[i])
     print('worker:', worker_id, 'end')
 
 
@@ -347,7 +408,7 @@ def multiProcess(thread_conf):
 
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
-
+    print(input_dir)
     for root, dirs, files in os.walk(input_dir):
         temp_output_dir = output_dir
         # tokens = root.split(input_dir)
@@ -414,6 +475,7 @@ if __name__ == "__main__":
                         help='for 300W there is no pt68_3d')
     parser.add_argument('--isOffset', default=True, type=ast.literal_eval)
     parser.add_argument('--isZeroZ', default=False, type=ast.literal_eval)
+    parser.add_argument('--isLS3D', default=False, type=ast.literal_eval)
     conf = parser.parse_args()
 
     if not conf.isSingle:

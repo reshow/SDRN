@@ -6,7 +6,8 @@ import torch
 from torchvision import transforms
 import augmentation
 from PIL import Image
-from data import matrix2Angle, matrix2Quaternion, angle2Matrix, angle2Quaternion, quaternion2Matrix
+from data import matrix2Angle, matrix2Quaternion, angle2Matrix, angle2Quaternion, quaternion2Matrix, uv_kpt
+import os
 
 
 class ImageData:
@@ -365,6 +366,60 @@ class DataGenerator(Dataset):
             attention_mask = self.toTensor(attention_mask)
             return image, pos, offset, attention_mask
 
+        elif self.mode == 'kpt':
+            if os.path.exists(self.all_image_data[index].cropped_posmap_path):
+                image = (self.all_image_data[index].getImage() / 255.).astype(np.float32)
+                pos = self.all_image_data[index].getPosmap().astype(np.float32)
+                offset = self.all_image_data[index].getOffsetPosmap().astype(np.float32)
+                attention_mask = self.all_image_data[index].getAttentionMask().astype(np.float32)
+
+                for i in range(3):
+                    image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
+                image = self.toTensor(image)
+
+                pos = pos / 280.
+                offset = offset / 6.
+                if abs(offset).max() > 1:
+                    print('\n too large offset', abs(offset).max())
+                pos = self.toTensor(pos)
+                offset = self.toTensor(offset)
+                attention_mask = Image.fromarray(attention_mask)
+                attention_mask = attention_mask.resize((32, 32), Image.BILINEAR)
+                attention_mask = np.array(attention_mask)
+                attention_mask = self.toTensor(attention_mask)
+                return image, pos, offset, attention_mask
+            else:
+                image = (self.all_image_data[index].getImage() / 255.).astype(np.float32)
+                offset = np.zeros((256, 256, 3)).astype(np.float32)
+
+                attention_mask = np.zeros((256, 256)).astype(np.float32)
+                bbox_info = self.all_image_data[index].getBboxInfo()
+                kpt = bbox_info['Kpt'].astype(np.float32)
+
+                if self.is_aug:
+                    # if np.random.rand() > 0.5:
+                    #     rot_angle = np.random.randint(-90, 90)
+                    #     rot_angle = rot_angle / 180. * np.pi
+                    #     image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
+                    # image, pos = augmentation.prnAugment_torch(image, pos, is_rotate=False)
+                    image, kpt, attention_mask = augmentation.kptAugment(image, kpt, attention_mask)
+                    for i in range(3):
+                        image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
+                    image = self.toTensor(image)
+                else:
+                    for i in range(3):
+                        image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
+                    image = self.toTensor(image)
+
+                attention_mask = np.zeros((32, 32)).astype(np.float32)
+                kpt = (kpt.transpose() / 280.).astype(np.float32)
+                offset = offset / 6.
+                if abs(offset).max() > 1:
+                    print('\n too large offset', abs(offset).max())
+                kpt = torch.from_numpy(kpt)
+                offset = self.toTensor(offset)
+                attention_mask = self.toTensor(attention_mask)
+                return image, kpt, offset, attention_mask
         else:
             return None
 

@@ -1045,6 +1045,132 @@ class FinetuneSDRN(SDRN):
         super(FinetuneSDRN, self).__init__()
         self.loss = FinetuneSDRNLoss()
 
+    def forward(self, inpt, gt_posmap, gt_offset, gt_attention, is_rebuild=True):
+        self.eval()
+        self.decoder.train()
+
+        x = self.layer0(inpt)
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        x = self.block5(x)
+        x = self.block6(x)
+        attention = self.attention_branch(x)
+        attention_features = torch.stack([x[i] * torch.exp(attention[i]) for i in range(len(x))], dim=0)
+        f = self.block7(attention_features)
+        f = self.block8(f)
+        f = self.block9(f)
+        f = self.block10(f)
+        x_new = f.detach()
+        offset = self.decoder(x_new)
+        kpt_posmap = self.decoder_kpt(f)
+
+        if is_rebuild:
+            posmap = self.rebuilder(offset, kpt_posmap)
+        else:
+            if self.training:
+                posmap = gt_posmap.clone()
+            else:
+                posmap = self.rebuilder(offset, kpt_posmap)
+
+        loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention = self.loss(posmap, offset, kpt_posmap, attention, gt_posmap, gt_offset,
+                                                                                         gt_attention)
+        return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, posmap
+
+
+class FinetuneKPTLoss(SDNLoss):
+    def __init__(self):
+        super(FinetuneKPTLoss, self).__init__()
+
+    def forward_test(self, kpt_posmap, gt_kpt):
+        kpt = kpt_posmap[:, 0:2, uv_kpt[:, 0], uv_kpt[:, 1]]
+        loss = torch.mean(torch.sqrt(torch.sum((gt_kpt - kpt) ** 2, 1)))
+
+        dist = torch.mean(torch.norm(kpt - gt_kpt, dim=1), dim=1)
+        left = torch.min(gt_kpt[:, 0, :], dim=1)[0]
+        right = torch.max(gt_kpt[:, 0, :], dim=1)[0]
+        top = torch.min(gt_kpt[:, 1, :], dim=1)[0]
+        bottom = torch.max(gt_kpt[:, 1, :], dim=1)[0]
+        bbox_size = torch.sqrt((right - left) * (bottom - top))
+        dist = dist / bbox_size
+
+        return loss, dist
+
+
+class FinetuneKPT(SDRN):
+    def __init__(self):
+        super(FinetuneKPT, self).__init__()
+        self.loss = FinetuneKPTLoss()
+
+    def forward(self, inpt, gt_posmap, gt_offset, gt_attention, is_rebuild=True):
+        # when finetune, there is only kpt label in training
+        if not self.training:
+            x = self.layer0(inpt)
+            x = self.block1(x)
+            x = self.block2(x)
+            x = self.block3(x)
+            x = self.block4(x)
+            x = self.block5(x)
+            x = self.block6(x)
+            attention = self.attention_branch(x)
+            attention_features = torch.stack([x[i] * torch.exp(attention[i]) for i in range(len(x))], dim=0)
+            f = self.block7(attention_features)
+            f = self.block8(f)
+            f = self.block9(f)
+            f = self.block10(f)
+            x_new = f.detach()
+            offset = self.decoder(x_new)
+            kpt_posmap = self.decoder_kpt(f)
+
+            if is_rebuild:
+                posmap = self.rebuilder(offset, kpt_posmap)
+            else:
+                if self.training:
+                    posmap = gt_posmap.clone()
+                else:
+                    posmap = self.rebuilder(offset, kpt_posmap)
+            loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention = self.loss(posmap, offset, kpt_posmap, attention, gt_posmap, gt_offset,
+                                                                                             gt_attention)
+        else:
+            self.layer0.eval()
+            self.block1.eval()
+            self.block2.eval()
+            self.block3.eval()
+            self.block4.eval()
+            self.block5.eval()
+            self.block6.eval()
+            self.attention_branch.eval()
+            self.block7.eval()
+            self.block8.eval()
+            self.block9.eval()
+            self.block10.eval()
+            self.decoder.eval()
+
+            x = self.layer0(inpt)
+            x = self.block1(x)
+            x = self.block2(x)
+            x = self.block3(x)
+            x = self.block4(x)
+            x = self.block5(x)
+            x = self.block6(x)
+            attention = self.attention_branch(x)
+            attention_features = torch.stack([x[i] * torch.exp(attention[i]) for i in range(len(x))], dim=0)
+            f = self.block7(attention_features)
+            f = self.block8(f)
+            f = self.block9(f)
+            f = self.block10(f)
+            x_new=f.detach()
+            kpt_posmap = self.decoder_kpt(x_new)
+
+            loss, metrics_kpt = self.loss.forward_test(kpt_posmap, gt_posmap)
+            metrics_posmap = loss.clone()
+            metrics_offset = loss.clone()
+
+            metrics_attention = loss.clone()
+            posmap = loss.clone()
+        return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, posmap
+
 
 class SDNLossv2(SDNLoss):
     def __init__(self):
@@ -1225,6 +1351,19 @@ class TorchNet:
 
     def buildFinetuneSDRN(self):
         self.model = FinetuneSDRN()
+
+        if self.gpu_num > 1:
+            self.model = nn.DataParallel(self.model, device_ids=self.visible_devices)
+        self.model.to(self.device)
+        # model.cuda()
+
+        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
+        scheduler_exp = optim.lr_scheduler.ExponentialLR(self.optimizer, 0.8)
+        scheduler_warmup = GradualWarmupScheduler(self.optimizer, multiplier=8, total_epoch=3, after_scheduler=scheduler_exp)
+        self.scheduler = scheduler_exp
+
+    def buildFinetuneKPT(self):
+        self.model = FinetuneKPT()
 
         if self.gpu_num > 1:
             self.model = nn.DataParallel(self.model, device_ids=self.visible_devices)

@@ -70,6 +70,7 @@ class NetworkManager:
                           'SDRN': [5, self.net.buildSDRN, 'visible', 4, 3],
                           'SDRNv2': [5, self.net.buildSDRNv2, 'visible', 4, 3],
                           'FinetuneSDRN': [5, self.net.buildFinetuneSDRN, 'visible', 4, 3],
+                          'FinetuneKPT': [5, self.net.buildFinetuneKPT, 'kpt', 4, 3],
                           'SRN': [5, self.net.buildSRN, 'visible', 4, 3]}
         self.mode = self.mode_dict['InitPRN']
         self.net_structure = ''
@@ -701,6 +702,99 @@ class NetworkManager:
                 # for PRN GT
                 # Tform = cp(p[uv_kpt[:, 0], uv_kpt[:, 1], :], gt_y[uv_kpt[:, 0], uv_kpt[:, 1], :])
                 # p = p.dot(Tform[0:3, 0:3].T) + Tform[0:3, 3]
+
+    def annotateLS3D(self, error_func_list=None, is_visualize=False):
+        from loss import cp, uv_kpt
+        total_task = len(self.test_data)
+        print('total img:', total_task)
+
+        model = self.net.model
+        total_error_list = []
+        num_output = self.mode[3]
+        num_input = self.mode[4]
+        data_generator = DataGenerator(all_image_data=self.test_data, mode=self.mode[2], is_aug=False, is_pre_read=self.is_pre_read)
+
+        with torch.no_grad():
+            model.eval()
+            for i in range(len(self.test_data)):
+                data = data_generator.__getitem__(i)
+                x = data[0]
+                x = x.to(self.net.device).float()
+                y = [data[j] for j in range(1, 1 + num_input)]
+                for j in range(num_input):
+                    y[j] = y[j].to(x.device).float()
+                    y[j] = torch.unsqueeze(y[j], 0)
+                x = torch.unsqueeze(x, 0)
+                outputs = model(x, *y)
+
+                p = outputs[-1]
+                x = x.squeeze().cpu().numpy().transpose(1, 2, 0)
+                p = p.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+                b = sio.loadmat(self.test_data[i].bbox_info_path)
+                gt_y = y[0]
+                gt_y = gt_y.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+
+                # for PRN GT
+                # Tform = cp(p[uv_kpt[:, 0], uv_kpt[:, 1], :], gt_y[uv_kpt[:, 0], uv_kpt[:, 1], :])
+                # p = p.dot(Tform[0:3, 0:3].T) + Tform[0:3, 3]
+
+                temp_errors = []
+                for error_func_name in error_func_list:
+                    error_func = getErrorFunction(error_func_name)
+                    error = error_func(gt_y, p, b['Bbox'], b['Kpt'])
+                    temp_errors.append(error)
+                total_error_list.append(temp_errors)
+                print(self.test_data[i].init_image_path, end='  ')
+                for er in temp_errors:
+                    print('%.5f' % er, end=' ')
+                print(i)
+                if is_visualize:
+                    init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                    plt.axis('off')
+                    plt.imshow(init_image)
+                    plt.show()
+                    if temp_errors[0] > 1.00:
+                        init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                        diff = np.square(gt_y - p) * masks.face_mask_np3d
+                        dist2d = np.sqrt(np.sum(diff[:, :, 0:2], axis=-1))
+                        dist2d[0, 0] = 30.0
+                        dist3d = np.sqrt(np.sum(diff[:, :, 0:3], axis=-1))
+                        dist3d[0, 0] = 30.0
+                        dist3 = np.sqrt(diff[:, :, 2])
+                        dist3[0, 0] = 30.0
+                        visibility = np.load(self.test_data[i].attention_mask_path.replace('attention', 'visibility')).astype(np.float32)
+
+                        plt.subplot(2, 3, 1)
+                        plt.imshow(init_image)
+                        plt.subplot(2, 3, 2)
+                        plt.imshow(dist2d)
+                        plt.subplot(2, 3, 3)
+                        plt.imshow(dist3d)
+                        plt.subplot(2, 3, 4)
+                        plt.imshow(dist3)
+                        plt.subplot(2, 3, 5)
+                        plt.imshow(visibility)
+                        plt.show()
+
+                        tex = np.load(self.test_data[i].texture_path.replace('zeroz2', 'full')).astype(np.float32)
+                        init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                        show([p, tex, init_image], mode='uvmap')
+                        init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                        show([gt_y, tex, init_image], mode='uvmap')
+                mean_errors = np.mean(total_error_list, axis=0)
+                for er in mean_errors:
+                    print('%.5f' % er, end=' ')
+                print('')
+            for i in range(len(error_func_list)):
+                print(error_func_list[i], mean_errors[i])
+
+            se_idx = np.argsort(np.sum(total_error_list, axis=-1))
+            se_data_list = np.array(self.test_data)[se_idx]
+            se_path_list = [a.cropped_image_path for a in se_data_list]
+            sep = '\n'
+            fout = open('errororder.txt', 'w', encoding='utf-8')
+            fout.write(sep.join(se_path_list))
+            fout.close()
 
 
 if __name__ == '__main__':

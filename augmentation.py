@@ -91,6 +91,27 @@ def rotateData(x, y, angle_range=45, specify_angle=None):
     return rotate_x, rotate_y
 
 
+def rotateKpt(x, y, angle_range=45, specify_angle=None):
+    if specify_angle is None:
+        angle = np.random.randint(-angle_range, angle_range)
+        angle = angle / 180. * np.pi
+    else:
+        angle = specify_angle
+    [image_height, image_width, image_channel] = x.shape
+    # move-rotate-move
+    [rform, rform_inv] = getRotateMatrix(angle, x.shape)
+
+    # rotate_x = transform.warp(x, rform_inv,
+    #                           output_shape=(image_height, image_width))
+    rotate_x = cv2.warpPerspective(x, rform, (image_height, image_width))
+    rotate_y = y.copy()
+    rotate_y = np.concatenate((rotate_y, np.ones((68, 1))), axis=-1)
+    rotate_y = myDot(rotate_y, rform.T)
+    rotate_y = rotate_y[:, 0:2]
+
+    return rotate_x, rotate_y
+
+
 def gaussNoise(x, mean=0, var=0.001):
     noise = np.random.normal(mean, var ** 0.5, x.shape)
     out = x + noise
@@ -277,6 +298,21 @@ def attentionAugment_torch(x, y, attention, is_rotate=True):
     if is_rotate:
         if np.random.rand() > 0.75:
             x, y = rotateData(x, y, 90)
+    if np.random.rand() > 0.75:
+        x, attention = randomMaskErase(x, attention)
+    if np.random.rand() > 0.5:
+        x = channelScale(x)
+    if np.random.rand() > 0.95:
+        x, attention = randomMaskReserve(x, attention)
+    # if np.random.rand() > 0.9:
+    #     x = gaussNoise(x)
+    return x, y, attention
+
+
+def kptAugment(x, y, attention, is_rotate=True):
+    if is_rotate:
+        if np.random.rand() > 0.75:
+            x, y = rotateKpt(x, y, 90)
     if np.random.rand() > 0.75:
         x, attention = randomMaskErase(x, attention)
     if np.random.rand() > 0.5:
