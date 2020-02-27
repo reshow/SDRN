@@ -105,7 +105,7 @@ class NetworkManager:
                           'SDRN': [5, self.net.buildSDRN, 'visible', 4, 3],
                           'SDRNv2': [5, self.net.buildSDRNv2, 'visible', 4, 3],
                           'FinetuneSDRN': [5, self.net.buildFinetuneSDRN, 'visible', 4, 3],
-                          'FinetuneKPT': [5, self.net.buildFinetuneKPT, 'kpt', 4, 3],
+                          'FinetuneKPT': [5, self.net.buildFinetuneKPT, 'kpt3d', 4, 3],
                           'SRN': [5, self.net.buildSRN, 'visible', 4, 3]}
         self.mode = self.mode_dict['InitPRN']
 

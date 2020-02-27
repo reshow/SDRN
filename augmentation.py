@@ -105,9 +105,12 @@ def rotateKpt(x, y, angle_range=45, specify_angle=None):
     #                           output_shape=(image_height, image_width))
     rotate_x = cv2.warpPerspective(x, rform, (image_height, image_width))
     rotate_y = y.copy()
-    rotate_y = np.concatenate((rotate_y, np.ones((68, 1))), axis=-1)
+    # rotate_y = np.concatenate((rotate_y, np.ones((68, 1))), axis=-1)
+    # rotate_y = myDot(rotate_y, rform.T)
+    # rotate_y = rotate_y[:, 0:2]
+    rotate_y[:, 2] = 1.
     rotate_y = myDot(rotate_y, rform.T)
-    rotate_y = rotate_y[:, 0:2]
+    rotate_y[:, 2] = y[:, 2]
 
     return rotate_x, rotate_y
 

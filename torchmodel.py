@@ -1084,7 +1084,7 @@ class FinetuneKPTLoss(SDNLoss):
         super(FinetuneKPTLoss, self).__init__()
 
     def forward_test(self, kpt_posmap, gt_kpt):
-        kpt = kpt_posmap[:, 0:2, uv_kpt[:, 0], uv_kpt[:, 1]]
+        kpt = kpt_posmap[:, :, uv_kpt[:, 0], uv_kpt[:, 1]]
         loss = torch.mean(torch.sqrt(torch.sum((gt_kpt - kpt) ** 2, 1)))
 
         dist = torch.mean(torch.norm(kpt - gt_kpt, dim=1), dim=1)
@@ -1160,7 +1160,7 @@ class FinetuneKPT(SDRN):
             f = self.block8(f)
             f = self.block9(f)
             f = self.block10(f)
-            x_new=f.detach()
+            x_new = f.detach()
             kpt_posmap = self.decoder_kpt(x_new)
 
             loss, metrics_kpt = self.loss.forward_test(kpt_posmap, gt_posmap)
@@ -1201,10 +1201,89 @@ class SDNLossv2(SDNLoss):
         return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention
 
 
-class SDRNv2(SDRN):
+class SDRNv2(nn.Module):
     def __init__(self):
         super(SDRNv2, self).__init__()
-        self.loss = SDNLossv2()
+        self.feature_size = 16
+        feature_size = self.feature_size
+        self.layer0 = Conv2d_BN_AC(in_channels=3, out_channels=feature_size, kernel_size=4, stride=1, padding=1)
+
+        self.block1 = PRNResBlock(in_channels=feature_size, out_channels=feature_size * 2, kernel_size=4, stride=2, with_conv_shortcut=True)  # 128 x 128 x 32
+        self.block2 = PRNResBlock(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1,
+                                  with_conv_shortcut=False)  # 128 x 128 x 32
+        self.block3 = PRNResBlock(in_channels=feature_size * 2, out_channels=feature_size * 4, kernel_size=4, stride=2,
+                                  with_conv_shortcut=True)  # 64 x 64 x 64
+        self.block4 = PRNResBlock(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1,
+                                  with_conv_shortcut=False)  # 64 x 64 x 64
+        self.block5 = PRNResBlock(in_channels=feature_size * 4, out_channels=feature_size * 8, kernel_size=4, stride=2,
+                                  with_conv_shortcut=True)  # 32 x 32 x 128
+        self.block6 = PRNResBlock(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1,
+                                  with_conv_shortcut=False)  # 32 x 32 x 128
+        self.block7 = PRNResBlock(in_channels=feature_size * 8, out_channels=feature_size * 16, kernel_size=4, stride=2,
+                                  with_conv_shortcut=True)  # 16 x 16 x 256
+        self.block8 = PRNResBlock(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1,
+                                  with_conv_shortcut=False)  # 16 x 16 x 256
+        self.block9 = PRNResBlock(in_channels=feature_size * 16, out_channels=feature_size * 32, kernel_size=4, stride=2,
+                                  with_conv_shortcut=True)  # 8 x 8 x 512
+        self.block10 = PRNResBlock(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1,
+                                   with_conv_shortcut=False)  # 8 x 8 x 512
+
+        self.attention_branch = AttentionModel(num_features_in=feature_size * 8)
+        self.decoder = nn.Sequential(
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 16, kernel_size=4, stride=2),  # 16 x 16 x 256
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 8, kernel_size=4, stride=2),  # 32 x 32 x 128
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 4, kernel_size=4, stride=2),  # 64 x 64 x 64
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 2, kernel_size=4, stride=2),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 1, kernel_size=4, stride=2),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=feature_size * 1, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Tanh()))
+        self.decoder_kpt = nn.Sequential(
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 16, kernel_size=4, stride=2),  # 16 x 16 x 256
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 8, kernel_size=4, stride=2),  # 32 x 32 x 128
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 4, kernel_size=4, stride=2),  # 64 x 64 x 64
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 2, kernel_size=4, stride=2),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 1, kernel_size=4, stride=2),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=feature_size * 1, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Tanh()))
+        self.rebuilder = VisibleRebuildModule()
+        self.loss = SDNLoss()
+
+    def forward(self, inpt, gt_posmap, gt_offset, gt_attention, is_rebuild=True):
+        x = self.layer0(inpt)
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        x = self.block5(x)
+        x = self.block6(x)
+        attention = self.attention_branch(x)
+        attention_features = torch.stack([x[i] * torch.exp(attention[i]) for i in range(len(x))], dim=0)
+        f = self.block7(attention_features)
+        f = self.block8(f)
+        f = self.block9(f)
+        f = self.block10(f)
+        x_new = f.detach()
+        offset = self.decoder(x_new)
+
+        kpt_posmap = self.decoder_kpt(f)
+
+        if is_rebuild:
+            posmap = self.rebuilder(offset, kpt_posmap)
+        else:
+            if self.training:
+                posmap = gt_posmap.clone()
+            else:
+                posmap = self.rebuilder(offset, kpt_posmap)
+
+        loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention = self.loss(posmap, offset, kpt_posmap, attention, gt_posmap, gt_offset,
+                                                                                         gt_attention)
+        return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, posmap
 
 
 class TorchNet:
