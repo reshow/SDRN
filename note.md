@@ -101,3 +101,8 @@
     SDRNv2 二阶导当loss 取消整体loss
     SDRN 在mcg03上 把kptloss改成只计算kpt处
     
+    
+    
+    2.27
+    v2 SDRN  /data1/rzy/disk/APRN/savedmodel/temp_best_model/2020-2-27-8-28-5SDRN
+    light lightSDRN  /data1/rzy/disk/APRN/savedmodel/temp_best_model/2020-2-27-10-59-10SDRNv2

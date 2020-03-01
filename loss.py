@@ -219,6 +219,89 @@ def KptLoss(is_centralize=False):
     return TemplateLoss
 
 
+def AttentedKptLoss():
+    class TemplateLoss(nn.Module):
+        def __init__(self, rate=1.0):
+            super(TemplateLoss, self).__init__()
+            self.rate = rate
+
+        def forward(self, y_true, y_pred, attention):
+            gt = y_true[:, :, uv_kpt[:, 0], uv_kpt[:, 1]]
+            pred = y_pred[:, :, uv_kpt[:, 0], uv_kpt[:, 1]]
+            dist = torch.norm(pred - gt, dim=1)
+            dist1 = dist.clone()
+            attention2 = attention.detach()
+            for i in range(y_true.shape[0]):
+                shallow_kpt_args = torch.argsort(gt[i, 2, :])[34:]
+                dist1[i, shallow_kpt_args] = dist[i, shallow_kpt_args] * 2
+                W = torch.ones(68, device=y_true.device)
+                for j in range(68):
+                    t1 = min(max(int(gt[i, 1, j] / 8 * 280), 0), 31)
+                    t2 = min(max(int(gt[i, 0, j] / 8 * 280), 0), 31)
+                    W[j] = W[j] * attention2[i, 0, t1, t2]
+                    # dist1[i, j] = dist[i, j] * attention[i, 0, t1, t2]
+                dist1[i] = dist[i] * W
+            dist2 = torch.mean(dist)
+            return dist2 * self.rate
+
+    return TemplateLoss
+
+
+def AlignmentLoss(is_centralize=False):
+    class TemplateLoss(nn.Module):
+        def __init__(self, rate=1.0):
+            super(TemplateLoss, self).__init__()
+            self.rate = rate
+
+        def forward(self, y_true, y_pred):
+            if is_centralize:
+                gt = y_true.clone()
+                pred = y_pred.clone()
+                for i in range(y_true.shape[0]):
+                    pred[i, 2] = pred[i, 2] - torch.mean(pred[i, 2])
+                    gt[i, 2] = gt[i, 2] - torch.mean(gt[i, 2])
+                dist = torch.mean(torch.norm(pred - gt, dim=1), dim=1)
+                left = torch.min(gt[:, 0, :], dim=1)[0]
+                right = torch.max(gt[:, 0, :], dim=1)[0]
+                top = torch.min(gt[:, 1, :], dim=1)[0]
+                bottom = torch.max(gt[:, 1, :], dim=1)[0]
+                bbox_size = torch.sqrt((right - left) * (bottom - top))
+                dist = dist / bbox_size
+            else:
+                dist = torch.mean(torch.sqrt(torch.sum((y_true - y_pred) ** 2, 1)))
+            return dist * self.rate
+
+    return TemplateLoss
+
+
+def AttendedAlignmentLoss():
+    class TemplateLoss(nn.Module):
+        def __init__(self, rate=1.0):
+            super(TemplateLoss, self).__init__()
+            self.rate = rate
+
+        def forward(self, y_true, y_pred, attention):
+            gt = y_true
+            pred = y_pred
+            dist = torch.norm(pred - gt, dim=1)
+            dist1 = dist.clone()
+            attention2 = attention.detach()
+            for i in range(y_true.shape[0]):
+                shallow_kpt_args = torch.argsort(gt[i, 2, :])[34:]
+                dist1[i, shallow_kpt_args] = dist[i, shallow_kpt_args] * 2
+                W = torch.ones(68, device=y_true.device)
+                for j in range(68):
+                    t1 = min(max(int(gt[i, 1, j] / 8 * 280), 0), 31)
+                    t2 = min(max(int(gt[i, 0, j] / 8 * 280), 0), 31)
+                    W[j] = W[j] * attention2[i, 0, t1, t2]
+                    # dist1[i, j] = dist[i, j] * attention[i, 0, t1, t2]
+                dist1[i] = dist[i] * W
+            dist2 = torch.mean(dist)
+            return dist2 * self.rate
+
+    return TemplateLoss
+
+
 def getLossFunction(loss_func_name='SquareError'):
     if loss_func_name == 'RootSquareError' or loss_func_name == 'rse':
         return UVLoss(is_foreface=False, is_weighted=False)
@@ -252,6 +335,14 @@ def getLossFunction(loss_func_name='SquareError'):
         return KptLoss()
     elif loss_func_name == 'kptc':
         return KptLoss(is_centralize=True)
+    elif loss_func_name == 'akpt':
+        return AttentedKptLoss()
+    elif loss_func_name == 'align':
+        return AlignmentLoss(is_centralize=False)
+    elif loss_func_name == 'alignc':
+        return AlignmentLoss(is_centralize=True)
+    elif loss_func_name == 'aalign':
+        return AttendedAlignmentLoss()
     else:
         print('unknown loss:', loss_func_name)
 

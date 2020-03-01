@@ -68,6 +68,7 @@ class NetworkManager:
                           'MeanOffsetPRN': [3, self.net.buildMeanOffsetPRN, 'meanoffset', 4, 4],
                           'VisiblePRN': [5, self.net.buildVisiblePRN, 'visible', 4, 3],
                           'SDRN': [5, self.net.buildSDRN, 'visible', 4, 3],
+                          'PPRN': [5, self.net.buildPPRN, 'visible', 4, 3],
                           'SDRNv2': [5, self.net.buildSDRNv2, 'visible', 4, 3],
                           'FinetuneSDRN': [5, self.net.buildFinetuneSDRN, 'visible', 4, 3],
                           'FinetuneKPT': [5, self.net.buildFinetuneKPT, 'kpt3d', 4, 3],
@@ -350,7 +351,7 @@ class NetworkManager:
         from data import matrix2Angle
         total_task = len(self.test_data)
         print('total img:', total_task)
-        error_func_list = ['landmark2d', 'landmark3d', 'nme2d', 'nme3d']  # , 'icp']
+        error_func_list = ['landmark2d', 'landmark3d', 'nme2d', 'nme3d','icp']
         model = self.net.model
         total_error_list = []
         num_output = self.mode[3]

@@ -418,13 +418,7 @@ def kpt2Tform(kpt_src, kpt_dst):
     return R * sum_dist2 / sum_dist1, t
 
 
-def kpt2TformWeighted(kpt_src, kpt_dst):
-    center_list = [36, 39, 42, 45, 30, 31, 35, 48, 54, 0, 8, 16]
-    W = torch.eye(68, device=kpt_src.device)
-    shallow_kpt_args = torch.argsort(kpt_dst[:, 2])[30:]
-    W[shallow_kpt_args, shallow_kpt_args] *= 2
-    W[center_list, center_list] *= 40
-
+def kpt2TformWeighted(kpt_src, kpt_dst, W):
     sum_dist1 = torch.sum(torch.norm(kpt_src - kpt_src[0], dim=1))
     sum_dist2 = torch.sum(torch.norm(kpt_dst - kpt_dst[0], dim=1))
     A = kpt_src * sum_dist2 / sum_dist1
@@ -465,20 +459,39 @@ class VisibleRebuildModule(nn.Module):
         self.revert_operator = nn.Parameter(torch.from_numpy(revert_opetator))
         self.revert_operator.requires_grad = False
 
-    def forward(self, Offset, Posmap_kpt, is_torch=False):
+    def forward(self, Offset, Posmap_kpt, attention=None, is_kpt=False):
         offsetmap = Offset * self.offset_scale + self.mean_posmap_tensor
         offsetmap = offsetmap.permute(0, 2, 3, 1)
-        kptmap = Posmap_kpt.permute(0, 2, 3, 1)
         outpos = torch.zeros((Offset.shape[0], 65536, 3), device=Offset.device)
         # uv_kpt2 = uv_kpt[17:]
-        uv_kpt2 = uv_kpt
-        kpt_dst = kptmap[:, uv_kpt2[:, 0], uv_kpt2[:, 1]]
-        kpt_src = offsetmap[:, uv_kpt2[:, 0], uv_kpt2[:, 1]]
+        if is_kpt:
+            kpt_dst = Posmap_kpt.permute(0, 2, 1)
+        else:
+            kptmap = Posmap_kpt.permute(0, 2, 3, 1)
+            kpt_dst = kptmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
+        kpt_src = offsetmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
         offsetmap = offsetmap.reshape((Offset.shape[0], 65536, 3))
 
         for i in range(Offset.shape[0]):
-            R, T = kpt2Tform(kpt_src[i], kpt_dst[i])
+            if attention is None:
+                R, T = kpt2Tform(kpt_src[i], kpt_dst[i])
             # R, T = kpt2TformWeighted(kpt_src[i], kpt_dst[i])
+            else:
+                # use attention mask to decide weights
+                # center_list = [36, 39, 42, 45, 30, 31, 35, 48, 54, 0, 8, 16]
+                # TODO: <0
+                attention2 = attention.detach()
+                # W = torch.eye(68, device=kpt_src.device)
+                W1 = torch.eye(68, device=kpt_src.device)
+                W2 = torch.eye(68, device=kpt_src.device)
+                shallow_kpt_args = torch.argsort(kpt_dst[:, 2])[34:]
+                W1[shallow_kpt_args, shallow_kpt_args] = 2
+                # W[center_list, center_list] *= 10
+                for j in range(68):
+                    t1 = min(max(int(kpt_dst[i, 1, j] / 8 * 280), 0), 31)
+                    t2 = min(max(int(kpt_dst[i, 0, j] / 8 * 280), 0), 31)
+                    W2[j, j] = W1[j, j] * attention2[i, 0, t1, t2]
+                R, T = kpt2TformWeighted(kpt_src[i], kpt_dst[i], W2)
 
             outpos[i] = offsetmap[i].mm(R.permute(1, 0)) + T
 
@@ -645,3 +658,108 @@ class MeanQTRegressor(nn.Module):
         T2ds = self.T2d_layer(feat)
         # T2ds = nn.Tanh()(T2ds)
         return Qs, T2ds
+
+
+def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
+    """3x3 convolution with padding"""
+    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
+                     padding=dilation, groups=groups, bias=False, dilation=dilation)
+
+
+def conv1x1(in_planes, out_planes, stride=1):
+    """1x1 convolution"""
+    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+
+
+def conv4x4(in_planes, out_planes, stride=1, padding=3, dilation=2):
+    return nn.Conv2d(in_planes, out_planes, kernel_size=4, stride=stride, padding=padding, dilation=dilation)
+
+
+class ResBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1, with_conv_shortcut=False, dilation=1):
+        super(ResBlock, self).__init__()
+
+        norm_layer = nn.BatchNorm2d
+        expansion = 2
+
+        # Both self.conv2 and self.downsample layers downsample the input when stride != 1
+        self.conv1 = conv1x1(in_channels, out_channels // expansion)
+        self.bn1 = norm_layer(out_channels // expansion)
+        self.conv2 = conv3x3(out_channels // expansion, out_channels // expansion, stride=stride, dilation=dilation)
+        self.bn2 = norm_layer(out_channels // expansion)
+        self.conv3 = conv1x1(out_channels // expansion, out_channels)
+        self.bn3 = norm_layer(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+        if with_conv_shortcut:
+            self.shortcut = nn.Sequential(
+                conv1x1(in_channels, out_channels, stride),
+                norm_layer(out_channels),
+            )
+        else:
+            self.shortcut = None
+        self.stride = stride
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+
+        if self.shortcut is not None:
+            identity = self.shortcut(x)
+        out += identity
+        out = self.relu(out)
+        return out
+
+
+class ResBlock4(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1, with_conv_shortcut=False, dilation=1):
+        super(ResBlock4, self).__init__()
+
+        norm_layer = nn.BatchNorm2d
+        expansion = 2
+
+        # Both self.conv2 and self.downsample layers downsample the input when stride != 1
+        self.conv1 = conv1x1(in_channels, out_channels // expansion)
+        self.bn1 = norm_layer(out_channels // expansion, momentum=0.5)
+        self.conv2 = conv4x4(out_channels // expansion, out_channels // expansion, stride=stride)
+        self.bn2 = norm_layer(out_channels // expansion, momentum=0.5)
+        self.conv3 = conv1x1(out_channels // expansion, out_channels)
+        self.bn3 = norm_layer(out_channels, momentum=0.5)
+        self.relu = nn.ReLU(inplace=True)
+        if with_conv_shortcut:
+            self.shortcut = nn.Sequential(
+                conv1x1(in_channels, out_channels, stride),
+                norm_layer(out_channels, momentum=0.5),
+            )
+        else:
+            self.shortcut = None
+        self.stride = stride
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+
+        if self.shortcut is not None:
+            identity = self.shortcut(x)
+        out += identity
+        out = self.relu(out)
+        return out
