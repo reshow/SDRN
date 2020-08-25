@@ -88,7 +88,7 @@ class NetworkManager:
     def addImageData(self, data_dir, add_mode='train', split_rate=0.8):
         all_data = []
         for root, dirs, files in os.walk(data_dir):
-            dirs.sort()  # keep order in linux
+            # dirs.sort()  # keep order in linux
             for dir_name in dirs:
                 image_name = dir_name
                 if not os.path.exists(root + '/' + dir_name + '/' + image_name + '_cropped.jpg'):
@@ -299,6 +299,8 @@ class NetworkManager:
                 for er in temp_errors:
                     print('%.5f' % er, end=' ')
                 print(i)
+                if temp_errors[0]>0.07:
+                    print('failure')
                 if is_visualize:
                     init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
                     plt.axis('off')
@@ -351,7 +353,8 @@ class NetworkManager:
         from data import matrix2Angle
         total_task = len(self.test_data)
         print('total img:', total_task)
-        error_func_list = ['landmark2d', 'landmark3d', 'nme2d', 'nme3d','icp']
+        error_func_list = ['landmark2d', 'landmark3d', 'nme2d', 'nme3d', 'icp']
+        # error_func_list = ['visiblekpt2d', 'visiblekpt3d', 'invisiblekpt2d', 'invisiblekpt3d']
         model = self.net.model
         total_error_list = []
         num_output = self.mode[3]
@@ -396,6 +399,132 @@ class NetworkManager:
                 for error_func_name in error_func_list:
                     error_func = getErrorFunction(error_func_name)
                     error = error_func(gt_y, p, b['Bbox'], b['Kpt'])
+                    temp_errors.append(error)
+                total_error_list.append(temp_errors)
+                print(self.test_data[i].init_image_path, i, end='  ')
+                for er in temp_errors:
+                    print('%.5f' % er, end=' ')
+                print('')
+
+                # if temp_errors[0] < 0.015:
+                #     print('get a good one\n\n')
+                if temp_errors[-1] >0.05:
+                    print('get a bad one\n\n')
+
+                if is_visualize:
+
+                    if temp_errors[0] > 0.06:
+                        init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                        diff = np.square(gt_y - p) * masks.face_mask_np3d
+                        dist2d = np.sqrt(np.sum(diff[:, :, 0:2], axis=-1))
+                        dist2d[0, 0] = 30.0
+                        dist3d = np.sqrt(np.sum(diff[:, :, 0:3], axis=-1))
+                        dist3d[0, 0] = 30.0
+                        dist3 = np.sqrt(diff[:, :, 2])
+                        dist3[0, 0] = 30.0
+                        visibility = np.load(self.test_data[i].attention_mask_path.replace('attention', 'visibility')).astype(np.float32)
+
+                        plt.subplot(2, 3, 1)
+                        plt.imshow(init_image)
+                        plt.subplot(2, 3, 2)
+                        plt.imshow(dist2d)
+                        plt.subplot(2, 3, 3)
+                        plt.imshow(dist3d)
+                        plt.subplot(2, 3, 4)
+                        plt.imshow(dist3)
+                        plt.subplot(2, 3, 5)
+                        plt.imshow(visibility)
+                        plt.show()
+
+                        tex = np.load(self.test_data[i].texture_path.replace('zeroz2', 'full')).astype(np.float32)
+                        init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                        show([p, tex, init_image], mode='uvmap')
+                        init_image = np.load(self.test_data[i].cropped_image_path).astype(np.float32) / 255.0
+                        show([gt_y, tex, init_image], mode='uvmap')
+                mean_errors = np.mean(total_error_list, axis=0)
+                for er in mean_errors:
+                    print('%.5f' % er, end=' ')
+                print(i)
+            for i in range(len(error_func_list)):
+                print(error_func_list[i], mean_errors[i])
+
+            total_error_list = np.array(total_error_list)
+            error_list_30 = total_error_list[angle_arg[0]]
+            error_list_60 = total_error_list[angle_arg[1]]
+            error_list_90 = total_error_list[angle_arg[2]]
+            print('length', len(angle_arg[2]))
+            np.random.seed(0)
+            np.random.shuffle(error_list_30)
+            np.random.shuffle(error_list_60)
+            np.random.shuffle(error_list_90)
+            item_num = len(angle_arg[2])
+            balance_error_list = np.concatenate([error_list_30[:item_num], error_list_60[:item_num], error_list_90[:item_num]])
+            print(np.mean(error_list_30[:item_num], axis=0), '\n', np.mean(error_list_60[:item_num], axis=0), '\n', np.mean(error_list_90[:item_num], axis=0),
+                  '\n', np.mean(balance_error_list, axis=0), '\n',
+                  np.std(balance_error_list[:, 0], ddof=1))
+
+    def testKPTV(self, is_visualize=False):
+        from data import matrix2Angle
+        total_task = len(self.test_data)
+        print('total img:', total_task)
+        # error_func_list = ['landmark2d', 'landmark3d', 'nme2d', 'nme3d', 'icp']
+        error_func_list = ['visiblekpt2d', 'visiblekpt3d', 'invisiblekpt2d', 'invisiblekpt3d']
+        model = self.net.model
+        total_error_list = []
+        num_output = self.mode[3]
+        num_input = self.mode[4]
+        data_generator = DataGenerator(all_image_data=self.test_data, mode=self.mode[2], is_aug=False, is_pre_read=self.is_pre_read)
+
+        pose_list = np.load('data/AFLW2000-3D.pose.npy')
+        angle_arg = [[], [], []]  # [0,30]  [30,60]  [60,90]
+
+        with torch.no_grad():
+            model.eval()
+            for i in range(len(self.test_data)):
+                data = data_generator.__getitem__(i)
+                x = data[0]
+                x = x.to(self.net.device).float()
+                y = [data[j] for j in range(1, 1 + num_input)]
+                for j in range(num_input):
+                    y[j] = y[j].to(x.device).float()
+                    y[j] = torch.unsqueeze(y[j], 0)
+                x = torch.unsqueeze(x, 0)
+                outputs = model(x, *y)
+
+                p = outputs[-1]
+                x = x.squeeze().cpu().numpy().transpose(1, 2, 0)
+                p = p.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+                b = sio.loadmat(self.test_data[i].bbox_info_path)
+                # R = b['TformOffset'][0:3, 0:3].T
+                # # yaw_angle = np.arctan2(-R[2, 0], np.sqrt(R[0, 0] ** 2 + R[1, 0] ** 2))
+                # # yaw_angle = np.abs(yaw_angle / np.pi * 180)
+
+                visibility_mask = np.load(self.test_data[i].bbox_info_path.replace('bbox_info.mat', 'visibility_mask.npy')).astype(np.float32)
+                v_m = visibility_mask.copy()
+                for ii in range(1, 254):
+                    for jj in range(1, 254):
+                        if visibility_mask[ii, jj] > 0:
+                            v_m[ii - 1, jj] = 1
+                            v_m[ii + 1, jj] = 1
+                            v_m[ii, jj - 1] = 1
+                            v_m[ii, jj + 1] = 1
+
+                yaw_angle = np.abs(pose_list[i])
+                if yaw_angle <= 30:
+                    angle_arg[0].append(i)
+                elif yaw_angle <= 60:
+                    angle_arg[1].append(i)
+                elif yaw_angle <= 90:
+                    angle_arg[2].append(i)
+                gt_y = y[0]
+                gt_y = gt_y.squeeze().cpu().numpy().transpose(1, 2, 0) * 280
+
+                temp_errors = []
+                for error_func_name in error_func_list:
+                    error_func = getErrorFunction(error_func_name)
+                    error = error_func(gt_y, p, b['Bbox'], v_m)
+                    if error == -1:
+                        error = temp_errors[len(temp_errors) - 2]
                     temp_errors.append(error)
                 total_error_list.append(temp_errors)
                 print(self.test_data[i].init_image_path, end='  ')
@@ -558,7 +687,7 @@ class NetworkManager:
         norm_mean_posmap = mean_posmap * 8
 
         from loss import cp, uv_kpt
-        from demorender import demoAll, compareKpt, renderCenter
+        from demorender import demoAll, compareKpt, renderCenter, demoKpt, renderLight
         total_task = len(self.test_data)
         print('total img:', total_task)
 
@@ -571,7 +700,12 @@ class NetworkManager:
         with torch.no_grad():
             model.eval()
             for i in range(len(self.test_data)):
-                specific_list = [157, 285, 319, 574, 630, 835, 1300]
+                specific_list = [  # 157, 285, 319, 574, 630, 835, 1300,
+                    # 157,400,562,779,1078,1156,1328,1350,1496,1726,1838
+                    331,360,364,388,397,465,630,637,664,779,891,955,1052,1281,1300,1328,1446,1453,1584,1712,1752
+                    #1776, 1766, 1462, 305, 1300, 835, 1914, 1751, 1721, 1607, 1561, 1496, 1478, 1446, 1424, 1415, 1409, 1380, 1363, 1328, 1273,
+                    #1247, 1194, 1184, 858, 762, 652, 630, 611, 574, 462, 450, 285, 157, 152, 36, 319
+                ]
                 # specific_list = [1300]
                 if i not in specific_list:
                     continue
@@ -599,6 +733,9 @@ class NetworkManager:
                 p_norm = p.dot(R.T) + T
                 p_norm[:, :, 1] = 256 - p_norm[:, :, 1]
 
+                p_norm_gt = gt_y.dot(R.T) + T
+                p_norm_gt[:, :, 1] = 256 - p_norm_gt[:, :, 1]
+
                 # for PRN GT
                 # Tform = cp(p[uv_kpt[:, 0], uv_kpt[:, 1], :], gt_y[uv_kpt[:, 0], uv_kpt[:, 1], :])
                 # p = p.dot(Tform[0:3, 0:3].T) + Tform[0:3, 3]
@@ -612,22 +749,45 @@ class NetworkManager:
                 print(i, self.test_data[i].init_image_path, end='  ')
                 for er in temp_errors:
                     print('%.5f' % er, end=' ')
-                print('')
+                print('i')
                 if is_visualize:
                     if temp_errors[0] >= 0.00:
                         demobg = np.load(self.test_data[i].cropped_image_path).astype(np.float32)
                         init_image = demobg / 255.0
 
-                        img1, img2 = demoAll(p, demobg, is_render=False)
+                        # p2 = p.copy()
+                        # for ii in range(1, 254):
+                        #     for jj in range(1, 254):
+                        #         p[ii, jj] = (p2[ii, jj] + p2[ii - 1, jj - 1] + p2[ii - 1, jj] + p2[ii - 1, jj + 1] +
+                        #                      p2[ii + 1, jj - 1] + p2[ii + 1, jj] + p2[ii + 1, jj + 1]
+                        #                      + p2[ii, jj - 1] + p2[ii, jj + 1]) / 9.0
+
+                        img1, img2 = demoAll(p, demobg.copy(), is_render=False)
                         io.imsave(save_img_dir + str(i) + '_shape.jpg', img1)
                         io.imsave(save_img_dir + str(i) + '_kpt.jpg', img2.astype(np.uint8))
                         io.imsave(save_img_dir + str(i) + '_init.jpg', (init_image * 255).astype(np.uint8))
 
-                        img1 = compareKpt(p, gt_y, demobg, is_render=False)
+                        img1 = compareKpt(p, gt_y, demobg.copy(), is_render=False)
                         io.imsave(save_img_dir + str(i) + 'compare.jpg', img1.astype(np.uint8))
 
                         img3 = renderCenter(p_norm, is_render=False)
                         io.imsave(save_img_dir + str(i) + 'norm.jpg', img3)
+                        img3 = renderCenter(p_norm_gt, is_render=False)
+                        io.imsave(save_img_dir + str(i) + 'normgt.jpg', img3)
+
+                        img5 = renderLight(gt_y, demobg.copy(), is_render = False)
+                        io.imsave(save_img_dir + str(i) + 'gtshape.jpg', img5)
+
+                        white = np.ones((256, 256, 3))
+                        p_norm[:, :, 0] += 128
+                        p_norm[:, :, 1] -= 128
+                        img4 = demoKpt(p_norm, white, False)
+                        io.imsave(save_img_dir + str(i) + 'normkpt.jpg', img4)
+
+                        from data import getLandmark
+                        gt_kpt = getLandmark(gt_y)
+                        np.save(save_img_dir + str(i) + '_gtkpt.npy', gt_kpt)
+
                     # diff = np.square(gt_y - p) * masks.face_mask_np3d
                     # dist2d = np.sqrt(np.sum(diff[:, :, 0:2], axis=-1))
                     # dist2d[0, 0] = 30.0
@@ -660,14 +820,6 @@ class NetworkManager:
                 print('')
             for i in range(len(error_func_list)):
                 print(error_func_list[i], mean_errors[i])
-
-            se_idx = np.argsort(np.sum(total_error_list, axis=-1))
-            se_data_list = np.array(self.test_data)[se_idx]
-            se_path_list = [a.cropped_image_path for a in se_data_list]
-            sep = '\n'
-            fout = open('errororder.txt', 'w', encoding='utf-8')
-            fout.write(sep.join(se_path_list))
-            fout.close()
 
     def testSpeed(self):
         total_task = len(self.test_data)
@@ -761,12 +913,13 @@ if __name__ == '__main__':
     parser.add_argument('-demo', '--isTestDemo', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-speed', '--isTestSpeed', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-annot', '--isAnnotation', default=False, type=ast.literal_eval, help='')
+    parser.add_argument('-tkptv', '--isKPTV', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-testsingle', '--isTestSingle', default=False, type=ast.literal_eval, help='')
     parser.add_argument('-visualize', '--isVisualize', default=False, type=ast.literal_eval, help='')
     parser.add_argument('--errorFunction', default='nme2d', nargs='+', type=str)
     parser.add_argument('--loadModelPath', default=None, type=str, help='')
     parser.add_argument('--visibleDevice', default='0', type=str, help='')
-    parser.add_argument('-struct', '--netStructure', default='InitPRNet', type=str, help='')
+    parser.add_argument('-struct', '--netStructure', default='InitPRN', type=str, help='')
     parser.add_argument('-lr', '--learningRate', default=1e-4, type=float)
     parser.add_argument('--startEpoch', default=0, type=int)
     parser.add_argument('--isPreRead', default=True, type=ast.literal_eval)
@@ -839,5 +992,11 @@ if __name__ == '__main__':
         for dir in run_args.testDataDir:
             net_manager.addImageData(dir, 'test')
             net_manager.testSpeed()
+    if run_args.isKPTV:
+        for dir in run_args.testDataDir:
+            net_manager.addImageData(dir, 'test')
+        if run_args.loadModelPath is not None:
+            net_manager.net.loadWeights(run_args.loadModelPath)
+            net_manager.testKPTV(is_visualize=run_args.isVisualize)
 
     writer.close()

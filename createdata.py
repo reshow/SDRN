@@ -25,6 +25,7 @@ def addModuleData(data_dir):
             file_type = file_tokens[1]
             if file_type == 'jpg':
                 module_path_list.append(root + '/' + str(file).replace('jpg', 'mat'))
+    print('add %d images' % len(module_path_list))
     return module_path_list
 
 
@@ -144,7 +145,7 @@ def createImageData(image_name, root, tex_modules, pos_modules):
     mask_colors = np.ones((len(mesh_info['colors']), 3))
     mask_image = mesh.render.render_colors(mesh_info['vertices'],
                                            new_triangles,  # mesh_info['triangles'],
-                                           mask_colors, 450, 450)
+                                           mask_colors, 450, 450)[:, :, 0]
     mesh_image = np.clip(mesh_image, 0., 1.)
 
     # 1. start
@@ -218,28 +219,41 @@ def createImageData(image_name, root, tex_modules, pos_modules):
     new_kpt = init_kpt_4d.dot(T_3d.T)[:, 0:3]
 
     # 5. save files
-    is_augment = True
-    if is_augment:
-        # attention_mask = getImageAttentionMask(cropped_image, uv_position_map)
-        # visibility_mask = getVisibilityMask(uv_position_map, cropped_image.shape)
-        np.save(write_dir + '/' + image_name + '_attention_mask.npy', np.around(cropped_mask[:, :, 0]).astype(np.uint8))
-        # np.save(write_dir + '/' + image_name + '_visibility_mask.npy', visibility_mask.astype(np.uint8))
+    # is_augment = True
+    # if is_augment:
+    #     # attention_mask = getImageAttentionMask(cropped_image, uv_position_map)
+    #     # visibility_mask = getVisibilityMask(uv_position_map, cropped_image.shape)
+    #     np.save(write_dir + '/' + image_name + '_attention_mask.npy', np.around(cropped_mask[:, :, 0]).astype(np.uint8))
+    #     # np.save(write_dir + '/' + image_name + '_visibility_mask.npy', visibility_mask.astype(np.uint8))
+    #
+    # sio.savemat(write_dir + '/' + image_name + '_bbox_info.mat',
+    #             {'OldBbox': old_bbox, 'Bbox': bbox, 'Tform': T_2d.astype(np.float32), 'TformInv': T_2d_inv.astype(np.float32),
+    #              'Tform3d': T_3d.astype(np.float32), 'Kpt': new_kpt, 'OldKpt': init_kpt,
+    #              'TformOffset': T_3d.dot(T_bfm).astype(np.float32)})
+    # np.save(write_dir + '/' + image_name + '_cropped_uv_posmap.npy', uv_position_map.astype(np.float32))
+    # np.save(write_dir + '/' + image_name + '_offset_posmap.npy', uv_offset_map.astype(np.float32))
+    # io.imsave(write_dir + '/' + image_name + '_cropped.jpg', (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
+    # io.imsave(write_dir + '/' + image_name + '_init.jpg', (mesh_image * 255.0).astype(np.uint8))
+    # np.save(write_dir + '/' + image_name + '_cropped.npy', (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
 
-    sio.savemat(write_dir + '/' + image_name + '_bbox_info.mat',
-                {'OldBbox': old_bbox, 'Bbox': bbox, 'Tform': T_2d.astype(np.float32), 'TformInv': T_2d_inv.astype(np.float32),
-                 'Tform3d': T_3d.astype(np.float32), 'Kpt': new_kpt, 'OldKpt': init_kpt,
-                 'TformOffset': T_3d.dot(T_bfm).astype(np.float32)})
-    np.save(write_dir + '/' + image_name + '_cropped_uv_posmap.npy', uv_position_map.astype(np.float32))
-    np.save(write_dir + '/' + image_name + '_offset_posmap.npy', uv_offset_map.astype(np.float32))
-    io.imsave(write_dir + '/' + image_name + '_cropped.jpg', (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
-    io.imsave(write_dir + '/' + image_name + '_init.jpg', (mesh_image * 255.0).astype(np.uint8))
-    np.save(write_dir + '/' + image_name + '_cropped.npy', (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
+    output_prefix = write_dir
+    offset_map_path = output_prefix + '/offset_map.npy'
+    position_map_path = output_prefix + '/position_map.npy'
+    cropped_image_path = output_prefix + '/image.npy'
+    visual_image_path = output_prefix + '/image.jpg'
+    attention_path = output_prefix + '/attention.jpg'
+
+    io.imsave(attention_path, cropped_mask.astype(np.uint8) * 255)
+    np.save(position_map_path, uv_position_map.astype(np.float32))
+    np.save(offset_map_path, uv_offset_map.astype(np.float32))
+    io.imsave(visual_image_path, (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
+    np.save(cropped_image_path, (np.squeeze(cropped_image * 255.0)).astype(np.uint8))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='data preprocess arguments')
-    parser.add_argument('-t', '--inputTexDir', default='data/back/300W-3D', type=str,
+    parser.add_argument('-t', '--inputTexDir', default='data/images/300W-3D', type=str,
                         help='path to the output directory, where results(npy,cropped jpg) will be stored.')
     parser.add_argument('-p', '--inputPosDir', default='data/images/AFLW2000', type=str,
                         help='path to the output directory, where results(npy,cropped jpg) will be stored.')

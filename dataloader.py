@@ -7,6 +7,7 @@ from torchvision import transforms
 import augmentation
 from PIL import Image
 from data import matrix2Angle, matrix2Quaternion, angle2Matrix, angle2Quaternion, quaternion2Matrix, uv_kpt
+from test_aug import prn_aug, att_aug, att_aug2
 import os
 
 
@@ -133,19 +134,19 @@ class DataGenerator(Dataset):
         self.no_augment = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])])
 
         self.is_pre_read = is_pre_read
-        if is_pre_read:
-            i = 0
-            print('preloading')
-            if self.mode == 'posmap':
-                num_max_PR = 80000
-            else:
-                num_max_PR = 40000
-            for data in self.all_image_data:
-                data.readFile(mode=self.mode)
-                print(i, end='\r')
-                i += 1
-                if i > num_max_PR:
-                    break
+        # if is_pre_read:
+        #     i = 0
+        #     print('preloading')
+        #     if self.mode == 'posmap':
+        #         num_max_PR = 80000
+        #     else:
+        #         num_max_PR = 40000
+        #     for data in self.all_image_data:
+        #         data.readFile(mode=self.mode)
+        #         print(i, end='\r')
+        #         i += 1
+        #         if i > num_max_PR:
+        #             break
 
     def __getitem__(self, index):
         if self.mode == 'posmap':
@@ -153,7 +154,9 @@ class DataGenerator(Dataset):
             image = (self.all_image_data[index].getImage() / 255.0).astype(np.float32)
             pos = self.all_image_data[index].getPosmap().astype(np.float32)
             if self.is_aug:
-                image, pos = augmentation.prnAugment_torch(image, pos)
+                # image, pos = augmentation.prnAugment_torch(image, pos)
+                image, pos = prn_aug(image, pos)
+
                 # image = (image * 255.0).astype(np.uint8)
                 #  image = self.augment(image)
 
@@ -164,6 +167,7 @@ class DataGenerator(Dataset):
                 image = self.toTensor(image)
             else:
                 # image = (image - image.mean()) / np.sqrt(image.var() + 0.001)
+                # image = augmentation.randomErase(image)
                 for i in range(3):
                     image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
@@ -239,6 +243,8 @@ class DataGenerator(Dataset):
             attention_mask = self.all_image_data[index].getAttentionMask().astype(np.float32)
             if self.is_aug:
                 image, pos, attention_mask = augmentation.attentionAugment_torch(image, pos, attention_mask)
+                image, pos, attention_mask = att_aug(image, pos, attention_mask)
+
                 for i in range(3):
                     image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
@@ -345,11 +351,14 @@ class DataGenerator(Dataset):
                 #     rot_angle = rot_angle / 180. * np.pi
                 #     image, pos = augmentation.rotateData(image, pos, specify_angle=rot_angle)
                 # image, pos = augmentation.prnAugment_torch(image, pos, is_rotate=False)
-                image, pos, attention_mask = augmentation.attentionAugment_torch(image, pos, attention_mask)
+                # image, pos, attention_mask = augmentation.attentionAugment_torch(image, pos, attention_mask)
+                # image, pos, attention_mask = att_aug(image, pos, attention_mask)
+                image, pos, attention_mask = att_aug2(image, pos, attention_mask)
                 for i in range(3):
                     image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
             else:
+                # image = augmentation.randomErase(image)
                 for i in range(3):
                     image[:, :, i] = (image[:, :, i] - image[:, :, i].mean()) / np.sqrt(image[:, :, i].var() + 0.001)
                 image = self.toTensor(image)
@@ -449,7 +458,7 @@ class DataGenerator(Dataset):
 
                 attention_mask = np.zeros((256, 256)).astype(np.float32)
 
-                kpt_path=self.all_image_data[index].bbox_info_path.replace('bbox_info.mat','kpt.npy')
+                kpt_path = self.all_image_data[index].bbox_info_path.replace('bbox_info.mat', 'kpt.npy')
 
                 kpt = np.load(kpt_path)
 

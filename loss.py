@@ -26,6 +26,82 @@ micc_face_mask[micc_face_mask > 0] = 1
 micc_center_mask = io.imread('uv-data/uv_face_MICC_coreface.png')
 micc_center_mask[micc_center_mask > 0] = 1
 
+weight_mask_np64 = io.imread('uv-data/uv_weight_mask.png').astype(np.float32)
+weight_mask_np64[weight_mask_np64 == 255] = 256
+weight_mask_np64 = weight_mask_np64 / 16
+weight_mask_np64[weight_mask_np64 == 4] = 12
+weight_mask_np64_copy = weight_mask_np64.copy()
+for ii in range(5, 250):
+    for jj in range(5, 250):
+        weight_mask_np64_copy[ii][jj] = weight_mask_np64[ii - 1:ii + 1, jj - 1:jj + 1].max()
+weight_mask_np64 = weight_mask_np64_copy[::1, ::1]
+weight_mask64 = torch.from_numpy(weight_mask_np64).float()
+face_mask_np64 = face_mask_np[::1, ::1]
+face_mask64 = torch.from_numpy(face_mask_np64).float()
+foreface_ind64 = np.array(np.where(face_mask_np > 0)).T
+
+
+
+class UVMSELoss(nn.Module):
+    def __init__(self, rate=1.0):
+        super(UVMSELoss, self).__init__()
+        self.rate = rate
+        self.weight_mask = nn.Parameter(weight_mask.clone())
+        self.face_mask = nn.Parameter(face_mask.clone())
+        self.weight_mask.requires_grad = False
+        self.face_mask.requires_grad = False
+
+    def forward(self, y_true, y_pred):
+        pred = y_pred
+        gt = y_true[:, :, ::1, ::1]
+        dist = torch.sum((gt - pred) ** 2, 1)
+        dist = dist * self.weight_mask
+        dist = dist * (self.face_mask * face_mask_mean_fix_rate)
+        loss = torch.mean(dist)
+        return loss * self.rate
+
+
+
+class UVLoss64(nn.Module):
+    def __init__(self, rate=1.0):
+        super(UVLoss64, self).__init__()
+        self.rate = rate
+        self.weight_mask = nn.Parameter(weight_mask64.clone())
+        self.face_mask = nn.Parameter(face_mask64.clone())
+        self.weight_mask.requires_grad = False
+        self.face_mask.requires_grad = False
+
+    def forward(self, y_true, y_pred):
+        pred = y_pred
+        gt = y_true[:, :, ::1, ::1]
+        dist = torch.sqrt(torch.sum((gt - pred) ** 2, 1))
+        dist = dist * self.weight_mask
+        dist = dist * (self.face_mask * face_mask_mean_fix_rate)
+        loss = torch.mean(dist)
+        return loss * self.rate
+
+
+class NMESparse3D64(nn.Module):
+    def __init__(self, rate=1.0):
+        super(NMESparse3D64, self).__init__()
+        self.rate = rate
+
+    def forward(self, y_true, y_pred):
+        gt = y_true[:, :, uv_kpt[:, 0] // 1 * 1, uv_kpt[:, 1] // 1 * 1]
+        pred = y_pred[:, :, uv_kpt[:, 0] // 1, uv_kpt[:, 1] // 1]
+        for i in range(y_true.shape[0]):
+            pred[i, 2] = pred[i, 2] - torch.mean(pred[i, 2])
+            gt[i, 2] = gt[i, 2] - torch.mean(gt[i, 2])
+        dist = torch.mean(torch.norm(pred - gt, dim=1), dim=1)
+        left = torch.min(gt[:, 0, :], dim=1)[0]
+        right = torch.max(gt[:, 0, :], dim=1)[0]
+        top = torch.min(gt[:, 1, :], dim=1)[0]
+        bottom = torch.max(gt[:, 1, :], dim=1)[0]
+        bbox_size = torch.sqrt((right - left) * (bottom - top))
+        dist = dist / bbox_size
+        loss = torch.mean(dist)
+        return loss * self.rate
+
 
 def UVLoss(is_foreface=False, is_weighted=False, is_nme=False):
     class TemplateLoss(nn.Module):
@@ -343,8 +419,68 @@ def getLossFunction(loss_func_name='SquareError'):
         return AlignmentLoss(is_centralize=True)
     elif loss_func_name == 'aalign':
         return AttendedAlignmentLoss()
+    elif loss_func_name == 'fwrse64':
+        return UVLoss64
+    elif loss_func_name == 'kptc64':
+        return NMESparse3D64
+    elif loss_func_name=='fwse':
+        return UVMSELoss
     else:
         print('unknown loss:', loss_func_name)
+
+
+def VisibleError(is_2d=False, is_inverse=False):
+    def templateError(y_gt, y_fit, bbox=None, visibility_mask=None):
+
+        y_true = y_gt.copy()
+        y_pred = y_fit.copy()
+        y_true[:, :, 2] = y_true[:, :, 2] * face_mask_np
+        y_pred[:, :, 2] = y_pred[:, :, 2] * face_mask_np
+        y_true_mean = np.mean(y_true[:, :, 2]) * face_mask_mean_fix_rate
+        y_pred_mean = np.mean(y_pred[:, :, 2]) * face_mask_mean_fix_rate
+        y_true[:, :, 2] = y_true[:, :, 2] - y_true_mean
+        y_pred[:, :, 2] = y_pred[:, :, 2] - y_pred_mean
+
+        # the gt landmark is not the same as the landmarks get from mesh using index
+        # gt = y_true[uv_kpt[:, 0], uv_kpt[:, 1]]
+        # pred = y_pred[uv_kpt[:, 0], uv_kpt[:, 1]]
+
+        # shallow_kpt_args = np.argsort(gt[:,2])[34:68]
+        # if is_inverse:
+        #     shallow_kpt_args = np.argsort(gt[:,2])[0:34]
+
+        gt = []
+        pred = []
+        for i in range(68):
+            if is_inverse:
+                if visibility_mask[uv_kpt[i, 0], uv_kpt[i, 1]] == 0:
+                    gt.append(y_true[uv_kpt[i, 0], uv_kpt[i, 1]])
+                    pred.append(y_pred[uv_kpt[i, 0], uv_kpt[i, 1]])
+            else:
+                if visibility_mask[uv_kpt[i, 0], uv_kpt[i, 1]] == 1:
+                    gt.append(y_true[uv_kpt[i, 0], uv_kpt[i, 1]])
+                    pred.append(y_pred[uv_kpt[i, 0], uv_kpt[i, 1]])
+        if len(gt) == 0:
+            return -1
+        gt = np.array(gt)
+        pred = np.array(pred)
+
+        gt[:, 2] = gt[:, 2] - gt[:, 2].mean()
+        pred[:, 2] = pred[:, 2] - pred[:, 2].mean()
+        diff = np.square(gt - pred)
+
+        # diff = diff[shallow_kpt_args]
+        if is_2d:
+            dist = np.sqrt(np.sum(diff[:, 0:2], axis=-1))
+        else:
+            dist = np.sqrt(np.sum(diff, axis=-1))
+
+        bbox_size = np.sqrt((bbox[0, 0] - bbox[1, 0]) * (bbox[0, 1] - bbox[1, 1]))
+
+        loss = np.mean(dist / bbox_size)
+        return loss
+
+    return templateError
 
 
 def PRNError(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=False, is_gt_landmark=False, is_weighted_landmark=False):
@@ -749,6 +885,15 @@ def getErrorFunction(error_func_name='NME', rate=1.0):
         return PRNError(is_2d=True, is_normalized=False, is_foreface=False, is_landmark=True)
     elif error_func_name == 'mmface3d':
         return PRNError(is_2d=False, is_normalized=False, is_foreface=True, is_landmark=False)
+
+    elif error_func_name == 'visiblekpt2d':
+        return VisibleError(is_2d=True, is_inverse=False)
+    elif error_func_name == 'visiblekpt3d':
+        return VisibleError(is_2d=False, is_inverse=False)
+    elif error_func_name == 'invisiblekpt2d':
+        return VisibleError(is_2d=True, is_inverse=True)
+    elif error_func_name == 'invisiblekpt3d':
+        return VisibleError(is_2d=False, is_inverse=True)
 
     else:
         print('unknown error:', error_func_name)

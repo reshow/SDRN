@@ -418,6 +418,38 @@ def kpt2Tform(kpt_src, kpt_dst):
     return R * sum_dist2 / sum_dist1, t
 
 
+def kpt2TformBatch(kpt_src, kpt_dst):
+    sum_dist1 = torch.sum(torch.norm(kpt_src - kpt_src[:, 33:34], dim=2), dim=1).unsqueeze(-1).unsqueeze(-1)
+    sum_dist2 = torch.sum(torch.norm(kpt_dst - kpt_dst[:, 33:34], dim=2), dim=1).unsqueeze(-1).unsqueeze(-1)
+    A = kpt_src * sum_dist2 / sum_dist1
+    B = kpt_dst
+    mu_A = A.mean(dim=1, keepdim=True)
+    mu_B = B.mean(dim=1, keepdim=True)
+    AA = A - mu_A
+    BB = B - mu_B
+    H = AA.permute(0, 2, 1).matmul(BB)
+    U, S, V = torch.svd(H)
+    R = V.matmul(U.permute(0, 2, 1))
+    t = torch.mean(B - A.matmul(R.permute(0, 2, 1)), dim=1)
+    return R * sum_dist2 / sum_dist1, t
+
+
+def kpt2TformBatchWeighted(kpt_src, kpt_dst, W):
+    sum_dist1 = torch.sum(torch.norm(kpt_src - kpt_src[:, 33:34], dim=2), dim=1).unsqueeze(-1).unsqueeze(-1)
+    sum_dist2 = torch.sum(torch.norm(kpt_dst - kpt_dst[:, 33:34], dim=2), dim=1).unsqueeze(-1).unsqueeze(-1)
+    A = kpt_src * sum_dist2 / sum_dist1
+    B = kpt_dst
+    mu_A = A.mean(dim=1, keepdim=True)
+    mu_B = B.mean(dim=1, keepdim=True)
+    AA = A - mu_A
+    BB = B - mu_B
+    H = AA.permute(0, 2, 1).matmul(W).matmul(BB)
+    U, S, V = torch.svd(H)
+    R = V.matmul(U.permute(0, 2, 1))
+    t = torch.mean(B - A.matmul(R.permute(0, 2, 1)), dim=1)
+    return R * sum_dist2 / sum_dist1, t
+
+
 def kpt2TformWeighted(kpt_src, kpt_dst, W):
     sum_dist1 = torch.sum(torch.norm(kpt_src - kpt_src[0], dim=1))
     sum_dist2 = torch.sum(torch.norm(kpt_dst - kpt_dst[0], dim=1))
@@ -485,16 +517,72 @@ class VisibleRebuildModule(nn.Module):
                 W1 = torch.eye(68, device=kpt_src.device)
                 W2 = torch.eye(68, device=kpt_src.device)
                 shallow_kpt_args = torch.argsort(kpt_dst[:, 2])[34:]
-                W1[shallow_kpt_args, shallow_kpt_args] = 2
+                W2[shallow_kpt_args, shallow_kpt_args] = 20
                 # W[center_list, center_list] *= 10
                 for j in range(68):
-                    t1 = min(max(int(kpt_dst[i, 1, j] / 8 * 280), 0), 31)
-                    t2 = min(max(int(kpt_dst[i, 0, j] / 8 * 280), 0), 31)
-                    W2[j, j] = W1[j, j] * attention2[i, 0, t1, t2]
+                    t1 = min(max(int(kpt_dst[i, j, 1] / 8 * 280), 0), 31)
+                    t2 = min(max(int(kpt_dst[i, j, 0] / 8 * 280), 0), 31)
+                    W2[j, j] = W2[j, j] * attention2[i, 0, t1, t2]
                 R, T = kpt2TformWeighted(kpt_src[i], kpt_dst[i], W2)
 
             outpos[i] = offsetmap[i].mm(R.permute(1, 0)) + T
 
+        outpos = outpos.reshape((Offset.shape[0], 256, 256, 3))
+        outpos = outpos.permute(0, 3, 1, 2)
+        return outpos
+
+
+class P2RNRebuildModule(nn.Module):
+    def __init__(self):
+        super(P2RNRebuildModule, self).__init__()
+        self.mean_posmap_tensor = nn.Parameter(torch.from_numpy(mean_posmap.transpose((2, 0, 1))))
+        self.mean_posmap_tensor.requires_grad = False
+
+        self.S_scale = 1e4
+        self.offset_scale = 6
+        revert_opetator = np.array([[1., -1., 1.], [1., -1., 1.], [1., -1., 1.]]).astype(np.float32)
+        self.revert_operator = nn.Parameter(torch.from_numpy(revert_opetator))
+        self.revert_operator.requires_grad = False
+
+    def forward(self, Offset, Posmap_kpt):
+        offsetmap = Offset * self.offset_scale + self.mean_posmap_tensor
+        offsetmap = offsetmap.permute(0, 2, 3, 1)
+
+        kptmap = Posmap_kpt.permute(0, 2, 3, 1)
+        kpt_dst = kptmap[:, uv_kpt[:, 0] // 1, uv_kpt[:, 1] // 1]
+        kpt_src = offsetmap[:, uv_kpt[:, 0] // 1 * 1, uv_kpt[:, 1] // 1 * 1]
+        offsetmap = offsetmap.reshape((Offset.shape[0], 65536, 3))
+        R, T = kpt2TformBatch(kpt_src, kpt_dst)
+        outpos = offsetmap.matmul(R.permute(0, 2, 1)) + T.unsqueeze(1)
+        outpos = outpos.reshape((Offset.shape[0], 256, 256, 3))
+        outpos = outpos.permute(0, 3, 1, 2)
+        return outpos
+
+
+class P2RNVisibilityRebuildModule(nn.Module):
+    def __init__(self):
+        super(P2RNVisibilityRebuildModule, self).__init__()
+        self.mean_posmap_tensor = nn.Parameter(torch.from_numpy(mean_posmap.transpose((2, 0, 1))))
+        self.mean_posmap_tensor.requires_grad = False
+
+        self.S_scale = 1e4
+        self.offset_scale = 6
+        revert_opetator = np.array([[1., -1., 1.], [1., -1., 1.], [1., -1., 1.]]).astype(np.float32)
+        self.revert_operator = nn.Parameter(torch.from_numpy(revert_opetator))
+        self.revert_operator.requires_grad = False
+
+    def forward(self, Offset, Posmap_kpt):
+        offsetmap = Offset * self.offset_scale + self.mean_posmap_tensor
+        offsetmap = offsetmap.permute(0, 2, 3, 1)
+        kptmap = Posmap_kpt.permute(0, 2, 3, 1)
+
+        weight_map=kptmap
+
+        kpt_dst = kptmap[:, uv_kpt[:, 0] // 1, uv_kpt[:, 1] // 1]
+        kpt_src = offsetmap[:, uv_kpt[:, 0] // 1 * 1, uv_kpt[:, 1] // 1 * 1]
+        offsetmap = offsetmap.reshape((Offset.shape[0], 65536, 3))
+        R, T = kpt2TformBatchWeighted(kpt_src, kpt_dst,weight_map)
+        outpos = offsetmap.matmul(R.permute(0, 2, 1)) + T.unsqueeze(1)
         outpos = outpos.reshape((Offset.shape[0], 256, 256, 3))
         outpos = outpos.permute(0, 3, 1, 2)
         return outpos
@@ -671,8 +759,8 @@ def conv1x1(in_planes, out_planes, stride=1):
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
 
-def conv4x4(in_planes, out_planes, stride=1, padding=3, dilation=2):
-    return nn.Conv2d(in_planes, out_planes, kernel_size=4, stride=stride, padding=padding, dilation=dilation)
+def conv4x4(in_planes, out_planes, stride=1, padding=3, dilation=1, padding_mode='circular'):
+    return nn.Conv2d(in_planes, out_planes, kernel_size=4, stride=stride, padding=padding, bias=False, dilation=dilation, padding_mode=padding_mode)
 
 
 class ResBlock(nn.Module):

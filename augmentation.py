@@ -147,7 +147,7 @@ def distortion(x):
 def randomErase(x, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 / 0.3, v_l=0, v_h=1.0):
     [img_h, img_w, img_c] = x.shape
     out = x.copy()
-    num = np.random.randint(1, max_num)
+    num = int(np.sqrt(np.random.randint(1, max_num * max_num)))
 
     for i in range(num):
         s = np.random.uniform(s_l, s_h) * img_h * img_w
@@ -158,7 +158,7 @@ def randomErase(x, max_num=4, s_l=0.02, s_h=0.3, r_1=0.3, r_2=1 / 0.3, v_l=0, v_
         top = np.random.randint(0, img_h)
         mask = np.zeros((img_h, img_w))
         mask[top:min(top + h, img_h), left:min(left + w, img_w)] = 1
-        mask = distortion(mask)
+        # mask = distortion(mask)
         if np.random.rand() < 0.25:
             c = np.random.uniform(v_l, v_h)
             out[mask > 0] = c
@@ -325,6 +325,8 @@ def kptAugment(x, y, attention, is_rotate=True):
     # if np.random.rand() > 0.9:
     #     x = gaussNoise(x)
     return x, y, attention
+
+
 
 
 if __name__ == '__main__':

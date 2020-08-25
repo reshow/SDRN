@@ -196,8 +196,8 @@ class DataProcessor:
 
         T_bfm = getTransformMatrix(s, angles, t, height)
         temp_ones_vec = np.ones((len(vertices), 1))
-        vertices_4dim = np.concatenate((vertices, temp_ones_vec), axis=-1)
-        image_vertices = vertices_4dim.dot(T_bfm.T)[:, 0:3]
+        homo_vertices = np.concatenate((vertices, temp_ones_vec), axis=-1)
+        image_vertices = homo_vertices.dot(T_bfm.T)[:, 0:3]
 
         # 3. crop image with key points
         # 3.1 get old bbox

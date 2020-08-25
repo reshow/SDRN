@@ -77,15 +77,21 @@ def showMesh(mesh_info, init_img=None):
         io.imshow(mesh_image)
         plt.show()
     else:
-        plt.subplot(1, 3, 1)
+        # plt.subplot(1, 3, 1)
+        plt.axis('off')
         plt.imshow(mesh_image)
+        plt.show()
 
-        plt.subplot(1, 3, 3)
+
+        plt.axis('off')
+        # plt.subplot(1, 3, 3)
         plt.imshow(init_img)
+        plt.show()
 
         verify_img = mesh.render.render_colors(mesh_info['vertices'], mesh_info['triangles'], mesh_info['colors'],
                                                height, width, channel, BG=init_img)
-        plt.subplot(1, 3, 2)
+        plt.axis('off')
+        # plt.subplot(1, 3, 2)
         plt.imshow(verify_img)
 
         plt.show()
@@ -114,7 +120,7 @@ def show(ipt, is_file=False, mode='image'):
             uv_texture_map = ipt[1]
             if len(ipt) > 2:
                 init_image = ipt[2]
-        mesh_info = UVmap2Mesh(uv_position_map=uv_position_map, uv_texture_map=uv_texture_map)
+        mesh_info = UVmap2Mesh(uv_position_map=uv_position_map, uv_texture_map=uv_texture_map,only_foreface=False)
         showMesh(mesh_info, init_image)
     elif mode == 'mesh':
         if is_file:

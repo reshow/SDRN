@@ -41,7 +41,7 @@ class MyThread(threading.Thread):
         try:
             return self.result  # 如果子线程不使用join方法，此处可能会报没有self.result的错误
         except Exception:
-            print('no result now')
+            print('\nno result now\n')
             return None
 
     def clear(self):
@@ -107,7 +107,8 @@ class NetworkManager:
                           'PPRN': [5, self.net.buildPPRN, 'visible', 4, 3],
                           'FinetuneSDRN': [5, self.net.buildFinetuneSDRN, 'visible', 4, 3],
                           'FinetuneKPT': [5, self.net.buildFinetuneKPT, 'kpt3d', 4, 3],
-                          'SRN': [5, self.net.buildSRN, 'visible', 4, 3]}
+                          'SRN': [5, self.net.buildSRN, 'visible', 4, 3],
+                          'P2RN': [5, self.net.buildP2RN, 'visible', 4, 3], }
         self.mode = self.mode_dict['InitPRN']
 
         self.num_thread = args.numReadingThread
@@ -165,6 +166,29 @@ class NetworkManager:
         fv.close()
         print('data path list loaded')
 
+    def loadBlock(self, block_id):
+        task_per_worker = int(math.ceil(self.num_block_per_part / self.num_thread))
+        st_idx = [block_id * self.num_block_per_part + task_per_worker * i for i in range(self.num_thread)]
+        ed_idx = [min(NUM_BLOCKS, block_id * self.num_block_per_part + task_per_worker * (i + 1)) for i in range(self.num_thread)]
+        jobs = []
+
+        for i in range(self.num_thread):
+            idx = np.array(data_block_names[st_idx[i]:ed_idx[i]])
+            p = MyThread(func=loadDataBlock, args=(idx, i))
+            jobs.append(p)
+        for p in jobs:
+            p.start()
+        return jobs
+
+    def appendBlock(self, jobs):
+        self.train_data = []
+        for p in jobs:
+            p.join()
+        for p in jobs:
+            temp_data_list = p.get_result()
+            self.train_data.extend(temp_data_list)
+            p.clear()
+
     def train(self):
         best_acc = 1000
         model = self.net.model
@@ -173,7 +197,8 @@ class NetworkManager:
 
         val_data_loader = getDataLoader(self.val_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=False, is_aug=False,
                                         is_pre_read=True, num_worker=0)
-
+        for i in range(self.start_epoch):
+            scheduler.step()
         for epoch in range(self.start_epoch, self.epoch):
             scheduler.step()
             print('Epoch: %d' % (epoch + 1))
@@ -187,28 +212,19 @@ class NetworkManager:
             num_fed_batch = 0
 
             random.shuffle(data_block_names)
+            jobs = []
             for block_id in range(NUM_BLOCKS // self.num_block_per_part):
-                task_per_worker = int(math.ceil(self.num_block_per_part / self.num_thread))
-                st_idx = [block_id * self.num_block_per_part + task_per_worker * i for i in range(self.num_thread)]
-                ed_idx = [min(NUM_BLOCKS, block_id * self.num_block_per_part + task_per_worker * (i + 1)) for i in range(self.num_thread)]
-                jobs = []
+                if block_id == 0:
+                    jobs = self.loadBlock(block_id)
 
-                self.train_data = []
-                for i in range(self.num_thread):
-                    idx = np.array(data_block_names[st_idx[i]:ed_idx[i]])
-                    p = MyThread(func=loadDataBlock, args=(idx, i))
-                    jobs.append(p)
-                for p in jobs:
-                    p.start()
-                for p in jobs:
-                    p.join()
-                for p in jobs:
-                    temp_data_list = p.get_result()
-                    self.train_data.extend(temp_data_list)
-                    p.clear()
+                self.appendBlock(jobs)
 
                 train_data_loader = getDataLoader(self.train_data, mode=self.mode[2], batch_size=self.batch_size * self.gpu_num, is_shuffle=True, is_aug=True,
                                                   is_pre_read=False, num_worker=self.num_worker)
+
+                if block_id < NUM_BLOCKS // self.num_block_per_part - 1:
+                    jobs = self.loadBlock(block_id + 1)
+
                 total_itr_num = len(train_data_loader.dataset) // train_data_loader.batch_size
                 for i, data in enumerate(train_data_loader):
                     num_fed_batch += 1
@@ -229,10 +245,10 @@ class NetworkManager:
                     print('\r', end='')
                     print('[epoch:%d, block:%d/%d, iter:%d/%d, time:%d] Loss: %.04f ' % (epoch + 1, block_id, NUM_BLOCKS // self.num_block_per_part, i,
                                                                                          total_itr_num,
-                                                                                         int(time.time() - t_start), sum_loss / (num_fed_batch + 1)), end='')
+                                                                                         int(time.time() - t_start), sum_loss / (num_fed_batch)), end='')
                     for j in range(num_output):
                         sum_metric_loss[j] += metrics_loss[j]
-                        print(' Metrics%d: %.04f ' % (j, sum_metric_loss[j] / (num_fed_batch + 1)), end='')
+                        print(' Metrics%d: %.04f ' % (j, sum_metric_loss[j] / (num_fed_batch)), end='')
 
             # validation
 
@@ -276,9 +292,9 @@ class NetworkManager:
 
             # write log
 
-            writer.add_scalar('train/loss', sum_loss / len(train_data_loader), epoch + 1)
+            writer.add_scalar('train/loss', sum_loss / num_fed_batch, epoch + 1)
             for j in range(self.mode[3]):
-                writer.add_scalar('train/metrics%d' % j, sum_metric_loss[j] / len(train_data_loader), epoch + 1)
+                writer.add_scalar('train/metrics%d' % j, sum_metric_loss[j] / num_fed_batch, epoch + 1)
                 writer.add_scalar('val/metrics%d' % j, val_sum_metric_loss[j] / len(val_data_loader), epoch + 1)
 
     def test(self, error_func_list=None, is_visualize=False):
@@ -391,8 +407,8 @@ if __name__ == '__main__':
     parser.add_argument('--startEpoch', default=0, type=int)
     parser.add_argument('--isPreRead', default=False, type=ast.literal_eval)
     parser.add_argument('--numWorker', default=4, type=int, help='loader worker number')
-    parser.add_argument('--numReadingThread', default=9, type=int)
-    parser.add_argument('--numBlockPerPart', default=63, type=int)
+    parser.add_argument('--numReadingThread', default=1, type=int)
+    parser.add_argument('--numBlockPerPart', default=15, type=int)
 
     run_args = parser.parse_args()
 
@@ -405,7 +421,7 @@ if __name__ == '__main__':
     net_manager = NetworkManager(run_args)
     net_manager.buildModel(run_args)
     if run_args.isTrain:
-        writer = SummaryWriter(log_dir='tmp' + save_dir_time)
+        writer = SummaryWriter(log_dir=net_manager.model_save_path + '/tb')
         for dir in run_args.valDataDir:
             net_manager.addImageData(dir, 'val')
         if run_args.loadModelPath is not None:
