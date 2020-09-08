@@ -108,7 +108,9 @@ class NetworkManager:
                           'FinetuneSDRN': [5, self.net.buildFinetuneSDRN, 'visible', 4, 3],
                           'FinetuneKPT': [5, self.net.buildFinetuneKPT, 'kpt3d', 4, 3],
                           'SRN': [5, self.net.buildSRN, 'visible', 4, 3],
-                          'P2RN': [5, self.net.buildP2RN, 'visible', 4, 3], }
+                          'P2RN': [5, self.net.buildP2RN, 'visible', 4, 3],
+                          'FinetunePPRN': [5, self.net.buildFinetunePPRN, 'visible', 4, 3],
+                          'RefNet': [6, self.net.buildRefNet, 'visible', 5, 3]}
         self.mode = self.mode_dict['InitPRN']
 
         self.num_thread = args.numReadingThread
@@ -203,6 +205,20 @@ class NetworkManager:
             scheduler.step()
             print('Epoch: %d' % (epoch + 1))
             model.train()
+
+            # freeze bn
+            # import torch.nn as nn
+            # for layer in model.modules():
+            #     if isinstance(layer, nn.BatchNorm2d):
+            #         layer.eval()
+            # # for layer in model.decoder_offset.modules():
+            # #     if isinstance(layer, nn.BatchNorm2d):
+            # #         layer.train()
+            # for layer in model.ref_block.modules():
+            #     if isinstance(layer, nn.BatchNorm2d):
+            #         layer.train()
+
+
 
             sum_loss = 0.0
             t_start = time.time()

@@ -912,7 +912,9 @@ class SDRN(nn.Module):
             ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Tanh()))
         # self.rebuilder = VisibleRebuildModule()
-        self.rebuilder = P2RNRebuildModule()
+        # self.rebuilder = P2RNRebuildModule()
+        self.rebuilder = P2RNVisibilityRebuildModule()
+
         self.loss = SDNLoss()
 
     def forward(self, inpt, gt_posmap, gt_offset, gt_attention, is_rebuild=True):
@@ -953,7 +955,7 @@ class SDRN(nn.Module):
 
         loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention = self.loss(posmap, offset, kpt_posmap, attention, gt_posmap, gt_offset,
                                                                                          gt_attention)
-        return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, posmap
+        return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, kpt_posmap
 
     def forward_test(self, inpt):
         x = self.layer0(inpt)
@@ -1355,7 +1357,7 @@ class PPRNLoss(nn.Module):
         self.criterion1 = getLossFunction('fwrse')(0.5)
         self.criterion2 = getLossFunction('fwrse')(1)  # kpt
         self.criterion3 = getLossFunction('bce')(0.05)  # attention
-        self.criterion4 = getLossFunction('smooth')(0.01)
+        self.criterion4 = getLossFunction('smooth')(0.002)
 
         self.metrics0 = getLossFunction('nme')(1.)
         self.metrics1 = getLossFunction('frse')(1.)
@@ -1365,10 +1367,10 @@ class PPRNLoss(nn.Module):
     def forward(self, posmap, offset, kpt_posmap, mask,
                 gt_posmap, gt_offset, gt_mask):
         loss_posmap = 0  # self.criterion0(gt_posmap, posmap)
-        loss_offset = 0  # self.criterion1(gt_offset, offset)
+        loss_offset = self.criterion1(gt_offset, offset)
         loss_kpt = self.criterion2(gt_posmap, kpt_posmap)
         loss_mask = self.criterion3(gt_mask, mask)
-        loss_smooth = 0  # self.criterion4(offset)
+        loss_smooth = self.criterion4(offset)
         loss = loss_offset + loss_kpt + loss_posmap + loss_mask + loss_smooth
 
         metrics_posmap = self.metrics0(gt_posmap, posmap)
@@ -1438,6 +1440,9 @@ class PPRN(nn.Module):
         )
 
         self.rebuilder = P2RNRebuildModule()
+        # self.rebuilder = P2RNVisibilityRebuildModule()
+        # self.rebuilder=EstimateRebuildModule()
+
         self.loss = PPRNLoss()
 
     def forward(self, inpt, gt_posmap, gt_offset, gt_attention, is_rebuild=True):
@@ -1478,15 +1483,38 @@ class PPRN(nn.Module):
                                                                                          gt_attention)
         return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, posmap
 
+    def predict(self, inpt):
+        x = self.layer0(inpt)
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        x = self.block5(x)
+        x = self.block6(x)
+        attention = self.attention_branch(x)
+        attention_features = torch.stack([x[i] * torch.exp(attention[i]) for i in range(len(x))], dim=0)
+        f = self.block7(attention_features)
+        f = self.block8(f)
+        f = self.block9(f)
+        f = self.block10(f)
+        f = self.decoder_low(f)
+        kpt_posmap = self.decoder_kpt(f)
+        offset = self.decoder_offset(f)
+        posmap = self.rebuilder(offset, kpt_posmap)
+        return posmap
+
 
 class P2RNLoss(nn.Module):
     def __init__(self):
         super(P2RNLoss, self).__init__()
-        self.criterion0 = getLossFunction('fwrse')(0)  # final pos
-        self.criterion1 = getLossFunction('fwrse')(0.5)  # offset
+        self.criterion0 = getLossFunction('fwrse')(0.1)  # final pos
+        # self.criterion1 = getLossFunction('fwse')(3)  # offset
+        # self.criterion2 = getLossFunction('fwse')(10)  # 10
+
+        self.criterion1 = getLossFunction('fwrse')(0.5)
         self.criterion2 = getLossFunction('fwrse')(1)  # kpt
         self.criterion3 = getLossFunction('bce')(0.05)  # attention
-        self.criterion4 = getLossFunction('smooth')(0.01)
+        self.criterion4 = getLossFunction('smooth')(0.002)
 
         self.metrics0 = getLossFunction('nme')(1.)
         self.metrics1 = getLossFunction('frse')(1.)
@@ -1499,7 +1527,7 @@ class P2RNLoss(nn.Module):
         loss_offset = self.criterion1(gt_offset, offset)
         loss_kpt = self.criterion2(gt_posmap, kpt_posmap)
         loss_mask = self.criterion3(gt_mask, mask)
-        loss_smooth = self.criterion4(offset)
+        loss_smooth = 0  # self.criterion4(offset)
         loss = loss_offset + loss_kpt + loss_posmap + loss_mask + loss_smooth
 
         metrics_posmap = self.metrics0(gt_posmap, posmap)
@@ -1537,37 +1565,37 @@ class P2RN(nn.Module):
                                  with_conv_shortcut=False)  # 8 x 8 x 512
 
         self.attention_branch = AttentionModel(num_features_in=feature_size * 8)
-        self.decoder = nn.Sequential(
+        self.decoder_low = nn.Sequential(
             ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1),  # 8 x 8 x 512
             ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 16, kernel_size=4, stride=2),  # 16 x 16 x 256
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1),  # 16 x 16 x 256
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1),  # 16 x 16 x 256
             ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 8, kernel_size=4, stride=2),  # 32 x 32 x 128
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1),  # 32 x 32 x 128
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1),  # 32 x 32 x 128
             ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 4, kernel_size=4, stride=2),  # 64 x 64 x 64
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1),  # 64 x 64 x 64
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1),  # 64 x 64 x 64
             ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 2, kernel_size=4, stride=2),
             ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 1, kernel_size=4, stride=2),
             ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=feature_size * 1, kernel_size=4, stride=1),
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=4, stride=1),
-            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1),
-            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Sequential()))
+        )
         self.decoder_kpt = nn.Sequential(
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 32, kernel_size=4, stride=1),  # 8 x 8 x 512
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 32, out_channels=feature_size * 16, kernel_size=4, stride=2),  # 16 x 16 x 256
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1),  # 16 x 16 x 256
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 16, kernel_size=4, stride=1),  # 16 x 16 x 256
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 16, out_channels=feature_size * 8, kernel_size=4, stride=2),  # 32 x 32 x 128
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1),  # 32 x 32 x 128
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 8, kernel_size=4, stride=1),  # 32 x 32 x 128
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 8, out_channels=feature_size * 4, kernel_size=4, stride=2),  # 64 x 64 x 64
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1),  # 64 x 64 x 64
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 4, kernel_size=4, stride=1),  # 64 x 64 x 64
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 4, out_channels=feature_size * 2, kernel_size=4, stride=2),
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 2, kernel_size=4, stride=1),
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 2, out_channels=feature_size * 1, kernel_size=4, stride=2),
-            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=feature_size * 1, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=4, stride=1),
             ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1),
-            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Sequential()))
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Sequential())
+        )
+        self.decoder_offset = nn.Sequential(
+
+            ConvTranspose2d_BN_AC(in_channels=feature_size * 1, out_channels=3, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1),
+            ConvTranspose2d_BN_AC(in_channels=3, out_channels=3, kernel_size=4, stride=1, activation=nn.Sequential())
+        )
+
         self.rebuilder = P2RNRebuildModule()
+        # self.rebuilder = P2RNVisibilityRebuildModule()
+
         self.loss = P2RNLoss()
 
     def forward(self, inpt, gt_posmap, gt_offset, gt_attention, is_rebuild=True):
@@ -1580,14 +1608,21 @@ class P2RN(nn.Module):
         x = self.block5(x)
         x = self.block6(x)
         attention = self.attention_branch(x)
+        # attention=gt_attention
         attention_features = torch.stack([x[i] * torch.exp(attention[i]) for i in range(len(x))], dim=0)
         f = self.block7(attention_features)
+        # f = self.block7(x)
         f = self.block8(f)
         f = self.block9(f)
         f = self.block10(f)
-        x_new = f.detach()
-        offset = self.decoder(f)
+        # combine_posmap = self.decoder_kpt(f)
+        # offset = combine_posmap[:, :3, :, :]
+        # kpt_posmap = combine_posmap[:, 3:, :, :]
+
+        f = self.decoder_low(f)
         kpt_posmap = self.decoder_kpt(f)
+        offset = self.decoder_offset(f)
+
         if is_rebuild:
             # posmap = self.rebuilder(offset, kpt_posmap, torch.round(attention))
             posmap = self.rebuilder(offset, kpt_posmap)
@@ -1656,6 +1691,135 @@ class FinetuneSDRN(P2RN):
         loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention = self.loss(posmap, offset, kpt_posmap, attention, gt_posmap, gt_offset,
                                                                                          gt_attention)
         return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, posmap
+
+
+class FinetunePPRNLoss(PPRNLoss):
+    def __init__(self):
+        super(FinetunePPRNLoss, self).__init__()
+
+    def forward(self, posmap, offset, kpt_posmap, mask,
+                gt_posmap, gt_offset, gt_mask):
+        loss_posmap = 0  # self.criterion0(gt_posmap, posmap)
+        loss_offset = self.criterion1(gt_offset, offset)
+        loss_kpt = 0  # self.criterion2(gt_posmap, kpt_posmap)
+        loss_mask = 0  # self.criterion3(gt_mask, mask)
+        loss_smooth = self.criterion4(offset)
+        loss = loss_offset
+
+        metrics_posmap = self.metrics0(gt_posmap, posmap)
+        metrics_offset = self.metrics1(gt_offset, offset)
+        metrics_kpt = self.metrics2(gt_posmap, kpt_posmap)
+        metrics_attention = self.metrics3(gt_mask, mask)
+        return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention
+
+
+class FinetunePPRN(PPRN):
+    def __init__(self):
+        super(FinetunePPRN, self).__init__()
+        self.loss = FinetunePPRNLoss()
+
+    def forward(self, inpt, gt_posmap, gt_offset, gt_attention, is_rebuild=True):
+        x = self.layer0(inpt)
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        x = self.block5(x)
+        x = self.block6(x)
+        attention = self.attention_branch(x)
+        # attention=gt_attention
+        attention_features = torch.stack([x[i] * torch.exp(attention[i]) for i in range(len(x))], dim=0)
+        f = self.block7(attention_features)
+        f = self.block8(f)
+        f = self.block9(f)
+        f = self.block10(f)
+
+        f = self.decoder_low(f)
+        f = f.detach()
+        kpt_posmap = self.decoder_kpt(f)
+        offset = self.decoder_offset(f)
+
+        posmap = self.rebuilder(offset, kpt_posmap)
+
+        loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention = self.loss(posmap, offset, kpt_posmap, attention, gt_posmap, gt_offset, gt_attention)
+        return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, posmap
+
+
+class RefLoss(nn.Module):
+    def __init__(self):
+        super(RefLoss, self).__init__()
+
+        self.criterion0 = getLossFunction('fwrse')(0.1)  # final pos
+
+        self.criterion1 = getLossFunction('fwrse')(0.5)
+        self.criterion2 = getLossFunction('fwrse')(1)  # kpt
+        self.criterion3 = getLossFunction('bce')(0.05)  # attention
+        self.criterion4 = getLossFunction('smooth')(0.002)
+
+        self.criterion5 = getLossFunction('fwrse')(1)  # refined
+
+        self.metrics0 = getLossFunction('nme')(1.)
+        self.metrics1 = getLossFunction('frse')(1.)
+        self.metrics2 = getLossFunction('kptc')(1.)
+        self.metrics3 = getLossFunction('mae')(1.)
+        self.metrics4 = getLossFunction('nme')(1.)
+
+    def forward(self, refined_posmap, posmap, offset, kpt_posmap, mask,
+                gt_posmap, gt_offset, gt_mask):
+        loss_posmap = 0  # self.criterion0(gt_posmap, posmap)
+        loss_offset = 0  # self.criterion1(gt_offset, offset)
+        loss_kpt = 0  # self.criterion2(gt_posmap, kpt_posmap)
+        loss_mask = 0  # self.criterion3(gt_mask, mask)
+        loss_smooth = 0  # self.criterion4(offset)
+
+        loss_refinement = self.criterion5(gt_posmap, refined_posmap)
+        loss = loss_refinement
+
+        metrics_posmap = self.metrics0(gt_posmap, posmap)
+        metrics_offset = self.metrics1(gt_offset, offset)
+        metrics_kpt = self.metrics2(gt_posmap, kpt_posmap)
+        metrics_attention = self.metrics3(gt_mask, mask)
+        metrics_refinement = self.metrics4(gt_posmap, refined_posmap)
+        return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, metrics_refinement
+
+
+class RefNet(PPRN):
+    def __init__(self):
+        super(RefNet, self).__init__()
+        self.loss = RefLoss()
+        self.ref_block = nn.Sequential(
+            ResBlock4(in_channels=6, out_channels=6, stride=1, with_conv_shortcut=False),
+            ResBlock4(in_channels=6, out_channels=3, stride=1, with_conv_shortcut=True)
+        )
+
+    def forward(self, inpt, gt_posmap, gt_offset, gt_attention, is_rebuild=True):
+        x = self.layer0(inpt)
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        x = self.block5(x)
+        x = self.block6(x)
+        attention = self.attention_branch(x)
+        # attention=gt_attention
+        attention_features = torch.stack([x[i] * torch.exp(attention[i]) for i in range(len(x))], dim=0)
+        f = self.block7(attention_features)
+        f = self.block8(f)
+        f = self.block9(f)
+        f = self.block10(f)
+
+        f = self.decoder_low(f)
+
+        kpt_posmap = self.decoder_kpt(f)
+        offset = self.decoder_offset(f)
+
+        posmap = self.rebuilder(offset, kpt_posmap)
+
+        refined_posmap = self.ref_block(torch.cat([posmap.detach(), kpt_posmap.detach()], dim=1))
+
+        loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, metrics_refinement = self.loss(refined_posmap, posmap, offset, kpt_posmap, attention, gt_posmap,
+                                                                                                             gt_offset, gt_attention)
+        return loss, metrics_posmap, metrics_offset, metrics_kpt, metrics_attention, metrics_refinement, refined_posmap
 
 
 class TorchNet:
@@ -1860,7 +2024,30 @@ class TorchNet:
         self.model.to(self.device)
         # model.cuda()
 
-        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate, weight_decay=0.0002)
+        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate)
+        scheduler_exp = optim.lr_scheduler.ExponentialLR(self.optimizer, 0.85)
+        scheduler_warmup = GradualWarmupScheduler(self.optimizer, multiplier=8, total_epoch=3, after_scheduler=scheduler_exp)
+        self.scheduler = scheduler_warmup
+
+    def buildFinetunePPRN(self):
+        self.model = FinetunePPRN()
+        if self.gpu_num > 1:
+            self.model = nn.DataParallel(self.model, device_ids=self.visible_devices)
+        self.model.to(self.device)
+        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate)
+        scheduler_exp = optim.lr_scheduler.ExponentialLR(self.optimizer, 0.85)
+        scheduler_warmup = GradualWarmupScheduler(self.optimizer, multiplier=8, total_epoch=3, after_scheduler=scheduler_exp)
+        self.scheduler = scheduler_warmup
+
+    def buildRefNet(self):
+        self.model = RefNet()
+
+        if self.gpu_num > 1:
+            self.model = nn.DataParallel(self.model, device_ids=self.visible_devices)
+        self.model.to(self.device)
+        # model.cuda()
+
+        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.learning_rate)
         scheduler_exp = optim.lr_scheduler.ExponentialLR(self.optimizer, 0.85)
         scheduler_warmup = GradualWarmupScheduler(self.optimizer, multiplier=8, total_epoch=3, after_scheduler=scheduler_exp)
         self.scheduler = scheduler_warmup
@@ -1870,6 +2057,13 @@ class TorchNet:
             # map_location = lambda storage, loc: storage
             self.model.module.load_state_dict(torch.load(model_path))  # , map_location=map_location))
         else:
-            self.model.load_state_dict(torch.load(model_path, map_location='cuda:0'))
+            # self.model.load_state_dict(torch.load(model_path, map_location='cuda:0'))
             # self.model.load_state_dict(torch.load(model_path))
+
+            pretrained = torch.load(model_path, map_location=self.device)
+            model_dict = self.model.state_dict()
+            match_dict = {k: v for k, v in pretrained.items() if (k in model_dict and v.shape == model_dict[k].shape)}
+            model_dict.update(match_dict)
+            self.model.load_state_dict(model_dict)
+
         self.model.to(self.device)

@@ -41,7 +41,6 @@ face_mask64 = torch.from_numpy(face_mask_np64).float()
 foreface_ind64 = np.array(np.where(face_mask_np > 0)).T
 
 
-
 class UVMSELoss(nn.Module):
     def __init__(self, rate=1.0):
         super(UVMSELoss, self).__init__()
@@ -59,7 +58,6 @@ class UVMSELoss(nn.Module):
         dist = dist * (self.face_mask * face_mask_mean_fix_rate)
         loss = torch.mean(dist)
         return loss * self.rate
-
 
 
 class UVLoss64(nn.Module):
@@ -423,7 +421,7 @@ def getLossFunction(loss_func_name='SquareError'):
         return UVLoss64
     elif loss_func_name == 'kptc64':
         return NMESparse3D64
-    elif loss_func_name=='fwse':
+    elif loss_func_name == 'fwse':
         return UVMSELoss
     else:
         print('unknown loss:', loss_func_name)
@@ -854,6 +852,81 @@ def MICCError():
     return templateError
 
 
+def ErrorMask(is_2d=False, is_normalized=True, is_foreface=True, is_landmark=False, is_gt_landmark=False, is_weighted_landmark=False):
+    def templateError(y_gt, y_fit, bbox=None, landmarks=None):
+        assert (not (is_foreface and is_landmark))
+        y_true = y_gt.copy()
+        y_pred = y_fit.copy()
+        y_true[:, :, 2] = y_true[:, :, 2] * face_mask_np
+        y_pred[:, :, 2] = y_pred[:, :, 2] * face_mask_np
+        y_true_mean = np.mean(y_true[:, :, 2]) * face_mask_mean_fix_rate
+        y_pred_mean = np.mean(y_pred[:, :, 2]) * face_mask_mean_fix_rate
+        y_true[:, :, 2] = y_true[:, :, 2] - y_true_mean
+        y_pred[:, :, 2] = y_pred[:, :, 2] - y_pred_mean
+
+        if is_landmark:
+            # the gt landmark is not the same as the landmarks get from mesh using index
+            if is_gt_landmark:
+                gt = landmarks.copy()
+                gt[:, 2] = gt[:, 2] - gt[:, 2].mean()
+
+                if is_weighted_landmark:
+                    pred = getWeightedKpt(y_pred)
+                else:
+                    pred = y_pred[uv_kpt[:, 0], uv_kpt[:, 1]]
+                diff = np.square(gt - pred)
+                if is_2d:
+                    dist = np.sqrt(np.sum(diff[:, 0:2], axis=-1))
+                else:
+                    dist = np.sqrt(np.sum(diff, axis=-1))
+            else:
+                gt = y_true[uv_kpt[:, 0], uv_kpt[:, 1]]
+                pred = y_pred[uv_kpt[:, 0], uv_kpt[:, 1]]
+                gt[:, 2] = gt[:, 2] - gt[:, 2].mean()
+                pred[:, 2] = pred[:, 2] - pred[:, 2].mean()
+                diff = np.square(gt - pred)
+                if is_2d:
+                    dist = np.sqrt(np.sum(diff[:, 0:2], axis=-1))
+                else:
+                    dist = np.sqrt(np.sum(diff, axis=-1))
+        else:
+            diff = np.square(y_true - y_pred)
+            if is_2d:
+                dist = np.sqrt(np.sum(diff[:, :, 0:2], axis=-1))
+            else:
+                # 3d
+                dist = np.sqrt(np.sum(diff, axis=-1))
+            if is_foreface:
+                dist = dist * face_mask_np * face_mask_mean_fix_rate
+
+        if is_normalized:  # 2D bbox size
+            # bbox_size = np.sqrt(np.sum(np.square(bbox[0, :] - bbox[1, :])))
+            if is_landmark:
+                bbox_size = np.sqrt((bbox[0, 0] - bbox[1, 0]) * (bbox[0, 1] - bbox[1, 1]))
+            else:
+                face_vertices = y_gt[face_mask_np > 0]
+                minx, maxx = np.min(face_vertices[:, 0]), np.max(face_vertices[:, 0])
+                miny, maxy = np.min(face_vertices[:, 1]), np.max(face_vertices[:, 1])
+                llength = np.sqrt((maxx - minx) * (maxy - miny))
+                bbox_size = llength
+
+        else:  # 3D bbox size
+            face_vertices = y_gt[face_mask_np > 0]
+            minx, maxx = np.min(face_vertices[:, 0]), np.max(face_vertices[:, 0])
+            miny, maxy = np.min(face_vertices[:, 1]), np.max(face_vertices[:, 1])
+            minz, maxz = np.min(face_vertices[:, 2]), np.max(face_vertices[:, 2])
+            if is_landmark:
+                llength = np.sqrt((maxx - minx) ** 2 + (maxy - miny) ** 2)
+            else:
+                llength = np.sqrt((maxx - minx) ** 2 + (maxy - miny) ** 2 + (maxz - minz) ** 2)
+            bbox_size = llength
+
+        loss = dist / bbox_size
+        return loss
+
+    return templateError
+
+
 def getErrorFunction(error_func_name='NME', rate=1.0):
     if error_func_name == 'nme2d' or error_func_name == 'normalized mean error2d':
         return PRNError(is_2d=True, is_normalized=True, is_foreface=True)
@@ -894,6 +967,8 @@ def getErrorFunction(error_func_name='NME', rate=1.0):
         return VisibleError(is_2d=True, is_inverse=True)
     elif error_func_name == 'invisiblekpt3d':
         return VisibleError(is_2d=False, is_inverse=True)
+    elif error_func_name == 'errormask':
+        return ErrorMask(is_2d=False, is_normalized=True, is_foreface=True)
 
     else:
         print('unknown error:', error_func_name)

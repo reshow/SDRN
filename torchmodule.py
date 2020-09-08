@@ -6,6 +6,8 @@ from data import mean_posmap, uv_kpt
 from skimage import io, transform
 import visualize
 
+alignment_kpt = np.load('uv-data/alignment_kpt.npy')
+
 
 # Hout​=(Hin​−1)stride[0]−2padding[0]+kernels​ize[0]+outputp​adding[0]
 
@@ -435,6 +437,7 @@ def kpt2TformBatch(kpt_src, kpt_dst):
 
 
 def kpt2TformBatchWeighted(kpt_src, kpt_dst, W):
+    print(W)
     sum_dist1 = torch.sum(torch.norm(kpt_src - kpt_src[:, 33:34], dim=2), dim=1).unsqueeze(-1).unsqueeze(-1)
     sum_dist2 = torch.sum(torch.norm(kpt_dst - kpt_dst[:, 33:34], dim=2), dim=1).unsqueeze(-1).unsqueeze(-1)
     A = kpt_src * sum_dist2 / sum_dist1
@@ -549,14 +552,32 @@ class P2RNRebuildModule(nn.Module):
         offsetmap = offsetmap.permute(0, 2, 3, 1)
 
         kptmap = Posmap_kpt.permute(0, 2, 3, 1)
-        kpt_dst = kptmap[:, uv_kpt[:, 0] // 1, uv_kpt[:, 1] // 1]
-        kpt_src = offsetmap[:, uv_kpt[:, 0] // 1 * 1, uv_kpt[:, 1] // 1 * 1]
+        kpt_dst = kptmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
+        kpt_src = offsetmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
+
+        # kpt_dst = kptmap[:, alignment_kpt[:, 0], alignment_kpt[:, 1]]
+        # kpt_src = offsetmap[:, alignment_kpt[:, 0], alignment_kpt[:, 1]]
+        # Weight = vis_map[:, alignment_kpt[:, 0], alignment_kpt[:, 1]]
         offsetmap = offsetmap.reshape((Offset.shape[0], 65536, 3))
         R, T = kpt2TformBatch(kpt_src, kpt_dst)
         outpos = offsetmap.matmul(R.permute(0, 2, 1)) + T.unsqueeze(1)
         outpos = outpos.reshape((Offset.shape[0], 256, 256, 3))
         outpos = outpos.permute(0, 3, 1, 2)
         return outpos
+
+
+def calculateVisibility(posmap):
+    B, C, W, H = posmap.shape
+    down_shift = torch.zeros((B, C, W, H), device=posmap.device)
+    right_shift = torch.zeros((B, C, W, H), device=posmap.device)
+    down_shift[:, :, :, 1:] = posmap[:, :, :, :-1]
+    right_shift[:, :, 1:, :] = posmap[:, :, :-1, :]
+    ab = posmap - right_shift
+    bc = down_shift - right_shift
+    z = ab[:, 0] * bc[:, 1] - ab[:, 1] * bc[:, 0]
+    z[z > 0] = 1
+    z[z < 0] = 0.1
+    return z
 
 
 class P2RNVisibilityRebuildModule(nn.Module):
@@ -571,19 +592,29 @@ class P2RNVisibilityRebuildModule(nn.Module):
         self.revert_operator = nn.Parameter(torch.from_numpy(revert_opetator))
         self.revert_operator.requires_grad = False
 
-    def forward(self, Offset, Posmap_kpt):
+    def forward(self, Offset, Posmap_kpt, attention=None):
+        B, C, W, H = Posmap_kpt.shape
         offsetmap = Offset * self.offset_scale + self.mean_posmap_tensor
         offsetmap = offsetmap.permute(0, 2, 3, 1)
+
+        vis_map = calculateVisibility(Posmap_kpt)
+
         kptmap = Posmap_kpt.permute(0, 2, 3, 1)
+        kpt_dst = kptmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
+        kpt_src = offsetmap[:, uv_kpt[:, 0], uv_kpt[:, 1]]
+        Weight = vis_map[:, uv_kpt[:, 0], uv_kpt[:, 1]]
 
-        weight_map=kptmap
+        if attention is not None:
+            kpt_ind = (kpt_dst[:, :, :2] * 280).long()
+            Weight_at = torch.stack([attention[i, 0, kpt_ind[i, :, 1] // 8, kpt_ind[i, :, 0] // 8] for i in range(B)])
+            Weight = Weight * Weight_at
 
-        kpt_dst = kptmap[:, uv_kpt[:, 0] // 1, uv_kpt[:, 1] // 1]
-        kpt_src = offsetmap[:, uv_kpt[:, 0] // 1 * 1, uv_kpt[:, 1] // 1 * 1]
-        offsetmap = offsetmap.reshape((Offset.shape[0], 65536, 3))
-        R, T = kpt2TformBatchWeighted(kpt_src, kpt_dst,weight_map)
+        # print(Weight)
+
+        offsetmap = offsetmap.reshape((B, W * H, C))
+        R, T = kpt2TformBatchWeighted(kpt_src, kpt_dst, torch.diag_embed(Weight))
         outpos = offsetmap.matmul(R.permute(0, 2, 1)) + T.unsqueeze(1)
-        outpos = outpos.reshape((Offset.shape[0], 256, 256, 3))
+        outpos = outpos.reshape((B, W, H, C))
         outpos = outpos.permute(0, 3, 1, 2)
         return outpos
 
